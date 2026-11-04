@@ -71,11 +71,11 @@ renamed; just build it in Visual Studio or Unreal to finish.
 
 After renaming, it automatically:
 
-1. generates the Visual Studio project files;
-2. builds the editor;
+1. generates the Visual Studio project files.
+2. builds the editor.
 3. **resaves assets** that still use the old C++ names. Any asset that shows a warning
-   when loaded is **skipped, not saved**, so nothing is saved broken; the log lists them;
-4. removes redirects that no asset needs any more (see below);
+   when loaded is **skipped, not saved**, so nothing is saved broken; the log lists them.
+4. removes redirects that no asset needs any more (see below).
 5. checks every enabled plugin still loads, and the assets that use it.
 
 ## How your Blueprints keep working: redirects
