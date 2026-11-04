@@ -17,7 +17,9 @@ from breaking. This tool does all of that for you, and checks the result.
 - **Visual Studio 2022 or 2026** with the **"Game development with C++"** workload
   (this includes the C++ compiler and a Windows SDK)
 
-There's nothing to install. Unreal's own Python is used behind the scenes.
+There's nothing to install and nothing to build: **`UnrealProjectRenamer.exe` is all you
+need** (this README is optional). It contains everything else, uses Unreal's own Python
+behind the scenes, and runs on the .NET Framework that comes with Windows.
 
 ## Before you start
 
@@ -149,8 +151,10 @@ By default it makes a renamed **copy** next to the original. Useful options:
 
 Run with `--help` for the full list.
 
-## Rebuilding the app (for maintainers)
+## About CLAUDE.md
 
-The app is a single C# file, `App/RenamerApp.cs`, with the Python script embedded in it.
-After changing either file, run `App\build.bat`. It needs Visual Studio's C# compiler, and
-the .exe runs on the .NET Framework built into Windows.
+`CLAUDE.md` in this folder holds developer notes for working on the app with
+[Claude Code](https://claude.com/claude-code), Anthropic's AI coding assistant. It covers
+how the tool works, how to rebuild it, what has been tested, and what's still to do.
+Claude Code reads it automatically when it works in this folder. You don't need it to use
+the app, and you don't need to share it.
