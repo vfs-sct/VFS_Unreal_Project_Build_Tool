@@ -1,0 +1,33 @@
+# Unreal Project Renamer
+#
+# UnrealProjectRenamer.exe is committed on purpose: it's what teammates download and run.
+# Rebuild it with App\build.bat after changing App/RenamerApp.cs or rename_unreal_project.py.
+
+# Python bytecode (created when the script runs)
+__pycache__/
+*.py[cod]
+
+# C# compiler / Visual Studio leftovers
+*.pdb
+*.obj
+.vs/
+*.user
+*.suo
+
+# Test projects and output from trying the tool locally
+*.uproject.bak
+*.ini.bak
+Test/
+Scratch/
+
+# Claude Code: personal settings (CLAUDE.md itself is shared)
+.claude/settings.local.json
+CLAUDE.local.md
+
+# Windows and editor clutter
+Thumbs.db
+desktop.ini
+*.tmp
+*.swp
+.idea/
+.vscode/
