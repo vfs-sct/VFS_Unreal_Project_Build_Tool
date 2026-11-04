@@ -33,7 +33,7 @@ behind the scenes, and runs on the .NET Framework that comes with Windows.
 
 1. Double-click **`UnrealProjectRenamer.exe`**.
    Windows may warn about an unrecognised app, because the .exe isn't signed. Choose
-   **More info → Run anyway**, or ask IT to allow it if your security software blocks it.
+   **More info → Run anyway**.
 2. **Project (.uproject):** click **Browse...** and pick the project's `.uproject`, or drag
    the `.uproject` (or its folder) onto the window.
 3. **New name:** type the new project name. It must start with a letter and use only
