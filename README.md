@@ -117,8 +117,6 @@ dispatchers that had the old name in them.
   If **other branches** or unsynced machines have assets that still use the old names, or
   you have **shipped save games**, add the removed lines back from your previous commit.
   The log lists what was removed.
-- With **Perforce**, check out the whole project first. Read-only files make the rename
-  fail partway.
 
 ## Limitations
 
