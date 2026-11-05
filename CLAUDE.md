@@ -46,6 +46,9 @@ The GUI extracts the embedded script to `%TEMP%\UnrealProjectRenamer\rename_<gui
 **After editing the .py or .cs, rebuild with `App\build.bat`** (the .exe embeds the .py).
 **Version:** `Program.Version` in `RenamerApp.cs` (started at 0.9.0). It's shown in the window
 title and the .exe's Properties > Details. Bump it for each build handed out.
+**Icon:** `App/RenamerApp.ico`, built in by `build.bat` (`-win32icon`). It's UE 5.8's
+`Engine/Build/Windows/Resources/Default.ico` recoloured: the black circle is red (204,24,30)
+and the U is still white. Every size is a PNG frame. The window reuses the .exe's icon.
 References: System.Windows.Forms, System.Drawing, System.Web.Extensions (JSON),
 System.Management (WMI).
 

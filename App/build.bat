@@ -14,6 +14,7 @@ if not defined CSC set "CSC=%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\csc.ex
 
 "%CSC%" -nologo -target:winexe -optimize+ -langversion:7.3 ^
   -out:"%HERE%..\UnrealProjectRenamer.exe" ^
+  -win32icon:"%HERE%RenamerApp.ico" ^
   -r:System.Windows.Forms.dll -r:System.Drawing.dll -r:System.Web.Extensions.dll -r:System.Management.dll ^
   -resource:"%HERE%..\rename_unreal_project.py",rename_unreal_project.py ^
   "%HERE%RenamerApp.cs"
