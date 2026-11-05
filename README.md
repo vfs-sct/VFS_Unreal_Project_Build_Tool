@@ -21,15 +21,17 @@ There's nothing to install and nothing to build: **`UnrealProjectRenamer.exe` is
 need** (this README is optional). It contains everything else, uses Unreal's own Python
 behind the scenes, and runs on the .NET Framework that comes with Windows.
 
-## Before you start
+## How to use it
+
+### Before you start
 
 1. **Commit or back up the project.** The rename changes files in place.
 2. **Close the project** in Unreal Editor, Visual Studio and Rider. The tool checks this
    and won't start while the project is open.
 3. If teammates or other branches use the project, read
-   [Working in a team](#working-in-a-team) first.
+   [Sharing the rename with your team](#sharing-the-rename-with-your-team) below first.
 
-## How to use it
+### Renaming
 
 1. Double-click **`UnrealProjectRenamer.exe`**.
    Windows may warn about an unrecognised app, because the .exe isn't signed. Choose
@@ -57,6 +59,18 @@ assets and checks the plugins**, which can take several minutes. When it says
 You can press **Cancel** while it's building or checking. It's greyed out at the moments
 when stopping could leave files half-written. If you cancel, the project is already
 renamed; just build it in Visual Studio or Unreal to finish.
+
+### Sharing the rename with your team
+
+- Rename on **one machine**, build, open the project and check it, then **commit
+  everything in one go**: renamed files, deleted old files, `DefaultEngine.ini` and the
+  resaved assets.
+- Everyone else should **sync, delete their `Binaries/` and `Intermediate/` folders**, and
+  open the new `.uproject`.
+- The app removes class and module redirects that no asset in **your** copy uses any more.
+  If **other branches** or unsynced machines have assets that still use the old names, or
+  you have **shipped save games**, add the removed lines back from your previous commit.
+  The log lists what was removed.
 
 ## What it changes
 
@@ -108,18 +122,6 @@ dispatchers that had the old name in them.
 | **"Renamed, but a follow-up step needs attention"** | The rename worked, but the build, resave or plugin check reported a problem. Scroll the log to see which one. |
 | **SKIPPED `<asset>` (loaded with warnings)** | That asset already had a problem before the rename, so it wasn't resaved. Open it in the editor, fix it and save it. It still loads through the redirects. |
 
-## Working in a team
-
-- Rename on **one machine**, build, open the project and check it, then **commit
-  everything in one go**: renamed files, deleted old files, `DefaultEngine.ini` and the
-  resaved assets.
-- Everyone else should **sync, delete their `Binaries/` and `Intermediate/` folders**, and
-  open the new `.uproject`.
-- The app removes class and module redirects that no asset in **your** copy uses any more.
-  If **other branches** or unsynced machines have assets that still use the old names, or
-  you have **shipped save games**, add the removed lines back from your previous commit.
-  The log lists what was removed.
-
 ## Limitations
 
 - **Blueprint-only projects** (no `Source/` folder) aren't supported. There's nothing to
@@ -131,30 +133,3 @@ dispatchers that had the old name in them.
   `.gitignore`, and docs other than the root README. Neither are other spellings of it,
   such as `mygame`.
 - Content folders named after the project (`/Game/MyGame/...`) aren't renamed.
-
-## Command line
-
-The app runs `rename_unreal_project.py`, which you can also use directly with Unreal's
-Python or any Python 3.8+:
-
-```bash
-python rename_unreal_project.py "C:\Projects\MyGame\MyGame.uproject" NewName --dry-run
-```
-
-By default it makes a renamed **copy** next to the original. Useful options:
-- `--in-place`: rename where it is, like the app does.
-- `--keep-folder-name`: with `--in-place`, keep the folder name.
-- `--engine-association 5.8`: switch engine.
-- `--generate-project-files`, `--build`, `--resave-assets`, `--remove-unused-redirects`,
-  `--verify-plugins`, `--open-editor`: the follow-up steps.
-- `--allow-common-name`: rename a common-word name.
-
-Run with `--help` for the full list.
-
-## About CLAUDE.md
-
-`CLAUDE.md` in this folder holds developer notes for working on the app with
-[Claude Code](https://claude.com/claude-code), Anthropic's AI coding assistant. It covers
-how the tool works, how to rebuild it, what has been tested, and what's still to do.
-Claude Code reads it automatically when it works in this folder. You don't need it to use
-the app, and you don't need to share it.
