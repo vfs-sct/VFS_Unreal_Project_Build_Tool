@@ -23,54 +23,42 @@ behind the scenes, and runs on the .NET Framework that comes with Windows.
 
 ## How to use it
 
-### Before you start
-
-1. **Commit or back up the project.** The rename changes files in place.
+1. **Commit or back up the project.** The rename changes files in place. Do the rename on
+   **one machine** only; your teammates pick it up from the commit (step 13).
 2. **Close the project** in Unreal Editor, Visual Studio and Rider. The tool checks this
    and won't start while the project is open.
-3. If teammates or other branches use the project, read
-   [Sharing the rename with your team](#sharing-the-rename-with-your-team) below first.
-
-### Renaming
-
-1. Double-click **`UnrealProjectRenamer.exe`**.
+3. Double-click **`UnrealProjectRenamer.exe`**.
    Windows may warn about an unrecognised app, because the .exe isn't signed. Choose
    **More info → Run anyway**.
-2. **Project (.uproject):** click **Browse...** and pick the project's `.uproject`, or drag
+4. **Project (.uproject):** click **Browse...** and pick the project's `.uproject`, or drag
    the `.uproject` (or its folder) onto the window.
-3. **New name:** type the new project name. It must start with a letter and use only
+5. **New name:** type the new project name. It must start with a letter and use only
    letters, digits and underscores, for example `SpaceRacer` or `Project_X2`. Keep it
    short; Unreal recommends 20 characters or fewer.
-4. **Engine version:** leave it on **Keep current**, or pick a newer installed engine to
+6. **Engine version:** leave it on **Keep current**, or pick a newer installed engine to
    upgrade the project at the same time. Picking an **older** engine is blocked
    (see [Messages you might see](#messages-you-might-see)).
-5. **Visual Studio:** the newest Visual Studio that works with the chosen engine is picked
+7. **Visual Studio:** the newest Visual Studio that works with the chosen engine is picked
    for you. Change it only if you need a specific version.
-6. *(Optional)* tick **Open in Unreal Editor when done**.
-7. Click **Preview changes**. This changes nothing. It lists every file that will be
+8. *(Optional)* tick **Open in Unreal Editor when done**.
+9. Click **Preview changes**. This changes nothing. It lists every file that will be
    renamed or edited, the redirects that will be added, and any warnings. Read it.
-8. Click **Rename** and confirm.
-
-The rename itself takes a few seconds. The app then **builds the project, updates the
-assets and checks the plugins**, which can take several minutes. When it says
-**"Renamed and built. All steps finished."**, click **Open folder** or open the new
-`.uproject`.
-
-You can press **Cancel** while it's building or checking. It's greyed out at the moments
-when stopping could leave files half-written. If you cancel, the project is already
-renamed; just build it in Visual Studio or Unreal to finish.
-
-### Sharing the rename with your team
-
-- Rename on **one machine**, build, open the project and check it, then **commit
-  everything in one go**: renamed files, deleted old files, `DefaultEngine.ini` and the
-  resaved assets.
-- Everyone else should **sync, delete their `Binaries/` and `Intermediate/` folders**, and
-  open the new `.uproject`.
-- The app removes class and module redirects that no asset in **your** copy uses any more.
-  If **other branches** or unsynced machines have assets that still use the old names, or
-  you have **shipped save games**, add the removed lines back from your previous commit.
-  The log lists what was removed.
+10. Click **Rename** and confirm.
+11. **Wait for it to finish.** The rename itself takes a few seconds. The app then
+    **builds the project, updates the assets and checks the plugins**, which can take
+    several minutes. You can press **Cancel** while it's building or checking. It's greyed
+    out at the moments when stopping could leave files half-written. If you cancel, the
+    project is already renamed; just build it in Visual Studio or Unreal to finish.
+12. When it says **"Renamed and built. All steps finished."**, click **Open folder** or open
+    the new `.uproject`, and check the project works.
+13. **Commit everything in one go**: renamed files, deleted old files, `DefaultEngine.ini`
+    and the resaved assets.
+    The app removes class and module redirects that no asset in **your** copy uses any
+    more. If **other branches** or unsynced machines have assets that still use the old
+    names, or you have **shipped save games**, add the removed lines back from your
+    previous commit before committing. The log lists what was removed.
+14. **Teammates** sync, delete their `Binaries/` and `Intermediate/` folders, and open the
+    new `.uproject`.
 
 ## What it changes
 
