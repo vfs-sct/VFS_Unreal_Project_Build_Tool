@@ -14,7 +14,7 @@ from breaking. This tool does all of that for you, and checks the result.
 
 - **Windows 10 or 11**
 - **Unreal Engine 5** installed (Epic Games Launcher, or a registered source build)
-- **Visual Studio 2022 or 2026** with the **"Game development with C++"** workload
+- **Visual Studio 2022 or 2026** (depending on Unreal version) with the **"Game development with C++"** workload
   (this includes the C++ compiler and a Windows SDK)
 
 There's nothing to install and nothing to build: **`UnrealProjectRenamer.exe` is all you
