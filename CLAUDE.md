@@ -44,6 +44,8 @@ The GUI extracts the embedded script to `%TEMP%\UnrealProjectRenamer\rename_<gui
 (unique per run, deleted afterwards) and runs it with `-u -I`.
 
 **After editing the .py or .cs, rebuild with `App\build.bat`** (the .exe embeds the .py).
+**Version:** `Program.Version` in `RenamerApp.cs` (started at 0.9.0). It's shown in the window
+title and the .exe's Properties > Details. Bump it for each build handed out.
 References: System.Windows.Forms, System.Drawing, System.Web.Extensions (JSON),
 System.Management (WMI).
 

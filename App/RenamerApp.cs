@@ -17,10 +17,20 @@ using System.Text.RegularExpressions;
 using System.Windows.Forms;
 using Microsoft.Win32;
 
+// Shown in the .exe's Properties > Details. The number itself is Program.Version.
+[assembly: AssemblyTitle("Unreal Project Renamer")]
+[assembly: AssemblyProduct("Unreal Project Renamer")]
+[assembly: AssemblyVersion(UnrealProjectRenamer.Program.Version + ".0")]
+[assembly: AssemblyFileVersion(UnrealProjectRenamer.Program.Version + ".0")]
+[assembly: AssemblyInformationalVersion(UnrealProjectRenamer.Program.Version)]
+
 namespace UnrealProjectRenamer
 {
     static class Program
     {
+        // App version: bump this for every build you hand out (major.minor.patch).
+        public const string Version = "0.9.0";
+
         [DllImport("user32.dll")]
         static extern bool SetProcessDPIAware();
 
@@ -625,7 +635,7 @@ namespace UnrealProjectRenamer
 
         public MainForm()
         {
-            Text = "Unreal Project Renamer";
+            Text = "Unreal Project Renamer  v" + Program.Version;
             Font = new Font("Segoe UI", 9f);
             AutoScaleMode = AutoScaleMode.Dpi;
             MinimumSize = new Size(760, 680);
