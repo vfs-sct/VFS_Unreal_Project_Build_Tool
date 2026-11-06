@@ -1004,6 +1004,9 @@ for pkg in job["packages"]:
 '''
 
 _PROBLEM_RE = re.compile(r":\s*(Warning|Error):")
+# Warnings about the whole project, logged once by whichever asset happens to load first; they say
+# nothing about that asset, so they don't count against it.
+_PROJECT_WIDE_RE = re.compile(r"No GameplayCueNotifyPaths were specified")
 
 
 def run_in_editor(engine_dir: Path, uproject: Path, mode: str, packages: list[str],
@@ -1073,7 +1076,7 @@ def parse_package_results(lines: list[str], packages: list[str], quiet: bool = F
             status = line.split("UPR_END|", 1)[1].strip().rsplit("|", 1)[-1]
             results[current] = "warnings" if problems and status == "ok" else status
             current = None
-        elif current and _PROBLEM_RE.search(line):
+        elif current and _PROBLEM_RE.search(line) and not _PROJECT_WIDE_RE.search(line):
             problems = True
             if all_problems is not None:
                 all_problems.setdefault(current, []).append(line)
@@ -1114,9 +1117,14 @@ def resave_assets(engine_dir: Path, uproject: Path, old_packages: list[str]) -> 
             if result[p] == "ok":
                 saved.append(p)
                 print(f"  saved   {p}")
+            elif result[p] == "warnings":
+                # It loaded cleanly in the check and the save succeeded; something was only logged meanwhile.
+                saved.append(p)
+                print(f"  saved   {p} (with warnings - worth a look, but it was saved)")
+                print_problems(p, save_problems)
             else:
                 skipped.append(p)
-                print(f"  FAILED  {p} ({result[p]})")
+                print(f"  FAILED  {p} (the save didn't succeed)")
                 print_problems(p, save_problems)
     return saved, skipped
 

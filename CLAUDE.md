@@ -120,6 +120,10 @@ How it works:
   nothing is saved broken), then saves. Each SKIPPED / FAILED asset gets up to two "why:" lines
   (`print_problems` / `readable_problem`: timestamp stripped, repeats counted, "(in X.uasset)" when
   the warning comes from another asset it loads); the raw editor lines are no longer printed.
+  A save that succeeds but logs a warning counts as **saved** ("saved ... (with warnings ...)"), not
+  FAILED; only a save that didn't succeed is FAILED (and keeps the old redirects). Project-wide
+  messages logged by whichever asset loads first (`_PROJECT_WIDE_RE`, e.g. GAS "No
+  GameplayCueNotifyPaths were specified") don't count against that asset. Found on GD82FP, 6 Nov.
 - Remove redirects: only Package/Class/Struct/Enum lines for old modules that no asset
   references any more. Property/Function redirects are **always kept** (Blueprint nodes may
   still store the old member names).
