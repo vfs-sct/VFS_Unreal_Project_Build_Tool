@@ -29,7 +29,7 @@ namespace UnrealProjectRenamer
     static class Program
     {
         // App version: bump this for every build you hand out (major.minor.patch).
-        public const string Version = "0.9.1";
+        public const string Version = "0.10.0";
 
         [DllImport("user32.dll")]
         static extern bool SetProcessDPIAware();
@@ -465,10 +465,80 @@ namespace UnrealProjectRenamer
                 bool hot = (e.State & DrawItemState.Selected) != 0 && (e.State & DrawItemState.ComboBoxEdit) == 0;
                 using (var bg = new SolidBrush(hot ? Hover : Surface)) e.Graphics.FillRectangle(bg, e.Bounds);
                 TextRenderer.DrawText(e.Graphics, combo.Items[e.Index].ToString(), combo.Font,
-                    new Rectangle(e.Bounds.X + 4, e.Bounds.Y, e.Bounds.Width - 4, e.Bounds.Height), Text,
+                    new Rectangle(e.Bounds.X + 4, e.Bounds.Y, e.Bounds.Width - 4, e.Bounds.Height), combo.Enabled ? Text : Disabled,
                     TextFormatFlags.VerticalCenter | TextFormatFlags.Left | TextFormatFlags.EndEllipsis);
             };
             DarkScrollBars(combo);
+        }
+    }
+
+    /// <summary>Short sound effects, synthesized in code (no sound files to ship).</summary>
+    static class Sfx
+    {
+        public enum Kind { Start, Success, Failure }
+
+        const int Rate = 44100;
+        static System.Media.SoundPlayer player; // kept alive while it plays
+        static readonly Dictionary<Kind, byte[]> cache = new Dictionary<Kind, byte[]>();
+
+        public static void Play(Kind kind)
+        {
+            try
+            {
+                if (player != null) player.Stop();
+                player = new System.Media.SoundPlayer(new MemoryStream(Wav(kind)));
+                player.Play(); // plays in the background
+            }
+            catch { } // no audio device: stay silent
+        }
+
+        /// <summary>The sound as a complete .wav file (16-bit mono).</summary>
+        public static byte[] Wav(Kind kind)
+        {
+            byte[] wav;
+            if (cache.TryGetValue(kind, out wav)) return wav;
+            // (start in seconds, frequency in Hz, length in seconds, volume, brightness)
+            double[][] notes;
+            switch (kind)
+            {
+                case Kind.Start:   // soft rising blip
+                    notes = new[] { new[] { 0.00, 659.3, 0.12, 0.30, 0.2 }, new[] { 0.09, 880.0, 0.20, 0.30, 0.2 } };
+                    break;
+                case Kind.Success: // bright rising chime, last note rings
+                    notes = new[] { new[] { 0.00, 523.3, 0.30, 0.26, 0.3 }, new[] { 0.09, 659.3, 0.30, 0.26, 0.3 },
+                                    new[] { 0.18, 784.0, 0.35, 0.26, 0.3 }, new[] { 0.27, 1046.5, 0.70, 0.30, 0.3 } };
+                    break;
+                default:           // two falling, buzzier low notes
+                    notes = new[] { new[] { 0.00, 392.0, 0.22, 0.32, 0.6 }, new[] { 0.20, 277.2, 0.45, 0.34, 0.6 } };
+                    break;
+            }
+            double total = notes.Max(n => n[0] + n[2]) + 0.05;
+            var samples = new double[(int)(total * Rate)];
+            foreach (var n in notes)
+            {
+                int start = (int)(n[0] * Rate), len = (int)(n[2] * Rate);
+                for (int i = 0; i < len && start + i < samples.Length; i++)
+                {
+                    double t = (double)i / Rate;
+                    double env = Math.Min(1, t / 0.006) * Math.Exp(-t * 5.0 / n[2]); // quick attack, smooth decay
+                    double w = 2 * Math.PI * n[1] * t;
+                    samples[start + i] += n[3] * env * (Math.Sin(w) + n[4] * 0.5 * Math.Sin(2 * w) + n[4] * 0.25 * Math.Sin(3 * w));
+                }
+            }
+            using (var ms = new MemoryStream())
+            using (var bw = new BinaryWriter(ms))
+            {
+                int dataLen = samples.Length * 2;
+                bw.Write(Encoding.ASCII.GetBytes("RIFF")); bw.Write(36 + dataLen); bw.Write(Encoding.ASCII.GetBytes("WAVE"));
+                bw.Write(Encoding.ASCII.GetBytes("fmt ")); bw.Write(16); bw.Write((short)1); bw.Write((short)1);
+                bw.Write(Rate); bw.Write(Rate * 2); bw.Write((short)2); bw.Write((short)16);
+                bw.Write(Encoding.ASCII.GetBytes("data")); bw.Write(dataLen);
+                foreach (var s in samples) bw.Write((short)(Math.Max(-1, Math.Min(1, s)) * 32000));
+                bw.Flush();
+                wav = ms.ToArray();
+            }
+            cache[kind] = wav;
+            return wav;
         }
     }
 
@@ -603,16 +673,19 @@ namespace UnrealProjectRenamer
         const string KeepEngine = "Keep current";
 
         readonly TextBox projectBox = new TextBox();
-        readonly TextBox nameBox = new TextBox();
+        readonly Button projectBrowse = new Button { Text = "Browse...", AutoSize = true };
+        // Unreal recommends project names of 20 characters or fewer.
+        readonly TextBox nameBox = new TextBox { MaxLength = 20 };
         readonly ComboBox engineBox = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList };
         readonly Label engineNote = new Label { AutoSize = true, ForeColor = Theme.Warn };
         readonly ComboBox vsBox = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList };
         readonly Label vsNote = new Label { AutoSize = true, ForeColor = Theme.Warn, MaximumSize = new Size(700, 0) };
-        readonly CheckBox openEditor = new DarkCheck { Text = "Open in Unreal Editor when done", AutoSize = true };
+        readonly CheckBox openEditor = new DarkCheck { Text = "Open in Unreal Editor when done", AutoSize = true, Checked = true };
         readonly Button previewButton = new Button { Text = "Preview changes", AutoSize = true };
         readonly Button renameButton = new Button { Text = "Rename", AutoSize = true };
         readonly Button cancelButton = new Button { Text = "Cancel", AutoSize = true, Visible = false };
         readonly Button openButton = new Button { Text = "Open folder", AutoSize = true, Enabled = false };
+        readonly Button saveLogButton = new Button { Text = "Save Output Log", AutoSize = true, Enabled = false };
         readonly TextBox log = new TextBox();
         readonly Label status = new Label { AutoSize = true, Text = "Pick a .uproject to start." };
 
@@ -623,11 +696,18 @@ namespace UnrealProjectRenamer
         int lastEngineIndex;       // engine choice to go back to when a downgrade is refused
         bool settingEngine;        // engine choice is being set by code, not by the user
         bool allowCommonName;      // the user confirmed renaming a project with a common-word name
+        int runId;                 // counts runs, so output from an earlier run can't reach the new log
 
         // Dialogs, replaceable so tests can answer them.
         internal static Action<IWin32Window, string, string> Notify = (o, t, m) => DarkDialog.Show(o, t, m);
         internal static Func<IWin32Window, string, string, string, string, bool> AskUser =
             (o, t, m, yes, no) => DarkDialog.Ask(o, t, m, true, yes, no);
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+        static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, string lParam);
+        const int EM_SETCUEBANNER = 0x1501;
+
+        // Sound effects, replaceable so tests can see which one played.
+        internal static Action<Sfx.Kind> PlaySound = Sfx.Play;
         bool runIsPreview, cancellable, cancelled;
         List<Engines.VisualStudio> visualStudios = new List<Engines.VisualStudio>();
         List<string> windowsSdks = new List<string>();
@@ -649,11 +729,12 @@ namespace UnrealProjectRenamer
             grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
             grid.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
 
-            var projectBrowse = new Button { Text = "Browse...", AutoSize = true };
             projectBox.Dock = DockStyle.Fill;
             AddRow(grid, "Project (.uproject)", projectBox, projectBrowse);
 
             nameBox.Dock = DockStyle.Fill;
+            // Grey hint shown while the box is empty (also while it has focus).
+            nameBox.HandleCreated += (s, e) => SendMessage(nameBox.Handle, EM_SETCUEBANNER, (IntPtr)1, "Maximum 20 characters");
             AddRow(grid, "New name", nameBox, null);
 
             var enginePanel = new FlowLayoutPanel { AutoSize = true, Margin = new Padding(0), WrapContents = false };
@@ -676,6 +757,7 @@ namespace UnrealProjectRenamer
             buttons.Controls.Add(renameButton);
             buttons.Controls.Add(cancelButton);
             buttons.Controls.Add(openButton);
+            buttons.Controls.Add(saveLogButton);
             AddRow(grid, "", buttons, null);
 
             log.Multiline = true;
@@ -704,9 +786,11 @@ namespace UnrealProjectRenamer
             previewButton.Click += (s, e) => Run(true);
             renameButton.Click += (s, e) => ConfirmAndRename();
             cancelButton.Click += (s, e) => CancelRun();
+            saveLogButton.Click += (s, e) => SaveLog();
+            log.TextChanged += (s, e) => UpdateSaveLogButton();
             openButton.Click += (s, e) => { if (lastResultFolder != null && Directory.Exists(lastResultFolder)) Process.Start("explorer.exe", "\"" + lastResultFolder + "\""); };
             DragEnter += (s, e) => { if (DroppedProject(e) != null) e.Effect = DragDropEffects.Copy; };
-            DragDrop += (s, e) => { var p = DroppedProject(e); if (p != null) projectBox.Text = p; };
+            DragDrop += (s, e) => { var p = DroppedProject(e); if (p != null && projectBox.Enabled) projectBox.Text = p; };
             FormClosing += (s, e) =>
             {
                 if (running == null || running.HasExited) return;
@@ -726,7 +810,7 @@ namespace UnrealProjectRenamer
             projectBox.Name = "projectBox"; nameBox.Name = "nameBox";
             engineBox.Name = "engineBox"; vsBox.Name = "vsBox"; openEditor.Name = "openEditor"; log.Name = "log"; status.Name = "status";
             previewButton.Name = "previewButton"; renameButton.Name = "renameButton"; openButton.Name = "openButton";
-            cancelButton.Name = "cancelButton"; vsNote.Name = "vsNote";
+            cancelButton.Name = "cancelButton"; vsNote.Name = "vsNote"; saveLogButton.Name = "saveLogButton";
 
             Theme.Apply(this);
             Theme.StyleButton(renameButton, true);
@@ -944,16 +1028,68 @@ namespace UnrealProjectRenamer
             vsNote.Visible = blocker != null;
 
             bool busy = running != null && !running.HasExited;
+            SetInputsLocked(busy);
             previewButton.Enabled = problem == null && !busy;
             renameButton.Enabled = problem == null && blocker == null && !busy;
             cancelButton.Visible = busy;
             cancelButton.Enabled = busy && cancellable;
+            UpdateSaveLogButton();
             if (!busy) status.Text = problem ?? (blocker != null ? "Can't rename yet - see the message above. Preview still works."
                                                                  : "Ready to rename \"" + old + "\" to \"" + nameBox.Text + "\". Preview first to see every change.");
         }
 
+        /// <summary>Grey out the inputs while a preview or rename runs, so nothing can change under it.</summary>
+        void SetInputsLocked(bool locked)
+        {
+            foreach (Control c in new Control[] { projectBox, projectBrowse, nameBox, engineBox, vsBox, openEditor })
+                c.Enabled = !locked;
+            AllowDrop = !locked;
+        }
+
+        /// <summary>Save Output Log: only when there's a log and nothing is running.</summary>
+        void UpdateSaveLogButton()
+        {
+            saveLogButton.Enabled = log.TextLength > 0 && (running == null || running.HasExited);
+        }
+
+        /// <summary>Hook so tests can pick the file instead of the Save dialog. Returns null to cancel.</summary>
+        internal static Func<IWin32Window, string, string, string> AskSavePath = (owner, folder, fileName) =>
+        {
+            using (var dlg = new SaveFileDialog
+            {
+                Title = "Save output log",
+                Filter = "Text file (*.txt)|*.txt",
+                DefaultExt = "txt",
+                AddExtension = true,
+                OverwritePrompt = true,
+                FileName = fileName,
+                InitialDirectory = folder,
+            })
+                return dlg.ShowDialog(owner) == DialogResult.OK ? dlg.FileName : null;
+        };
+
+        void SaveLog()
+        {
+            if (!saveLogButton.Enabled) return;
+            var name = OldName.Length > 0 ? OldName : "UnrealProjectRenamer";
+            var folder = lastResultFolder ?? (File.Exists(ProjectPath) ? Path.GetDirectoryName(ProjectPath)
+                                                                       : Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments));
+            var path = AskSavePath(this, folder, name + "_rename_log_" + DateTime.Now.ToString("yyyy-MM-dd_HHmm") + ".txt");
+            if (path == null) return;
+            try
+            {
+                File.WriteAllText(path, log.Text, new UTF8Encoding(false));
+                status.Text = "Output log saved to " + path;
+            }
+            catch (Exception ex)
+            {
+                Notify(this, "Couldn't save the log", ex.Message);
+            }
+        }
+
         void BrowseProject()
         {
+            if (!projectBrowse.Enabled) return;
             using (var dlg = new OpenFileDialog { Filter = "Unreal project (*.uproject)|*.uproject", Title = "Choose the project to rename" })
                 if (dlg.ShowDialog(this) == DialogResult.OK) projectBox.Text = dlg.FileName;
         }
@@ -1068,6 +1204,8 @@ namespace UnrealProjectRenamer
             };
             psi.EnvironmentVariables["PYTHONIOENCODING"] = "utf-8";
 
+            // Each run starts with an empty log; lines still arriving from an earlier run are dropped.
+            int id = ++runId;
             log.Clear();
             lastResultFolder = null;
             openButton.Enabled = false;
@@ -1076,8 +1214,8 @@ namespace UnrealProjectRenamer
             cancellable = dryRun; // a real rename can't be stopped until its files are renamed
             status.Text = dryRun ? "Previewing..." : "Renaming, then building and checking assets... this can take several minutes.";
             running = new Process { StartInfo = psi, EnableRaisingEvents = true };
-            running.OutputDataReceived += (s, e) => { if (e.Data != null) Append(e.Data); };
-            running.ErrorDataReceived += (s, e) => { if (e.Data != null) Append(e.Data); };
+            running.OutputDataReceived += (s, e) => { if (e.Data != null) AppendFromRun(e.Data, id); };
+            running.ErrorDataReceived += (s, e) => { if (e.Data != null) AppendFromRun(e.Data, id); };
             running.Exited += (s, e) => BeginInvoke(new Action(() => Finished(dryRun)));
             try
             {
@@ -1085,6 +1223,8 @@ namespace UnrealProjectRenamer
                 running.StandardInput.Close();
                 running.BeginOutputReadLine();
                 running.BeginErrorReadLine();
+                // Rename starting (not for Preview, and not again when a common name is confirmed).
+                if (!dryRun && !allowCommonName) PlaySound(Sfx.Kind.Start);
             }
             catch (Exception ex)
             {
@@ -1092,6 +1232,13 @@ namespace UnrealProjectRenamer
                 Append("Couldn't start Python: " + ex.Message);
             }
             UpdateState();
+        }
+
+        /// <summary>Output from run number <paramref name="id"/>; ignored once a newer run has started.</summary>
+        void AppendFromRun(string line, int id)
+        {
+            if (InvokeRequired) { BeginInvoke(new Action<string, int>(AppendFromRun), line, id); return; }
+            if (id == runId) Append(line);
         }
 
         void Append(string line)
@@ -1182,11 +1329,20 @@ namespace UnrealProjectRenamer
                               log.Text.Contains("COMMON NAME:") ? "Preview done - note the COMMON NAME warning above. Nothing was changed." :
                               "Preview done - nothing was changed. Click Rename to apply.";
             else if (!renamed)
+            {
                 status.Text = "Failed - see the messages above.";
+                PlaySound(Sfx.Kind.Failure);
+            }
             else if (code != 0)
+            {
                 status.Text = "Renamed, but a follow-up step needs attention - see the messages above.";
+                PlaySound(Sfx.Kind.Failure);
+            }
             else
+            {
                 status.Text = "Renamed and built. All steps finished.";
+                PlaySound(Sfx.Kind.Success);
+            }
         }
     }
 }

@@ -932,8 +932,18 @@ def assets_referencing(root: Path, packages: list[str]) -> dict[str, set[str]]:
 
 # Runs inside the Unreal Editor (headless). Reads its job from the file named in UPR_JOB.
 _EDITOR_SCRIPT = r'''
-import json, os, unreal
+import ctypes, json, os, unreal
 job = json.load(open(os.environ["UPR_JOB"], encoding="utf-8"))
+
+_get_module = ctypes.windll.kernel32.GetModuleHandleW
+_get_module.argtypes, _get_module.restype = [ctypes.c_wchar_p], ctypes.c_void_p
+
+def module_loaded(m):
+    # Modules with UObjects get a /Script package; modules without one are found by their loaded DLL.
+    if unreal.find_object(None, "/Script/" + m) is not None:
+        return True
+    return any(_get_module("UnrealEditor-%s%s.dll" % (m, s)) for s in ("", "-Win64-DebugGame"))
+
 # Headless editors don't finish scanning plugin content on their own; wait for a full scan.
 unreal.AssetRegistryHelpers.get_asset_registry().search_all_assets(True)
 if job["mode"] == "plugins":
@@ -942,8 +952,7 @@ if job["mode"] == "plugins":
     for name, modules in job["plugins"].items():
         unreal.log("UPR_PLUGIN|%s|%s|%s" % (name, name in enabled, lib.is_plugin_mounted(name)))
         for m in modules:
-            # A module's /Script package only exists once its DLL has loaded.
-            unreal.log("UPR_MODULE|%s|%s|%s" % (name, m, unreal.find_object(None, "/Script/" + m) is not None))
+            unreal.log("UPR_MODULE|%s|%s|%s" % (name, m, module_loaded(m)))
 for pkg in job["packages"]:
     unreal.log("UPR_BEGIN|" + pkg)
     ok = False
@@ -1133,6 +1142,18 @@ def plugins_in_use(root: Path, uproject: Path, engine_dir: Path) -> dict[str, tu
     return result
 
 
+def plugin_has_content(uplugin: Path | None) -> bool:
+    """True when the plugin can hold content (so Unreal mounts it): CanContainContent, or a Content folder."""
+    if uplugin is None:
+        return False
+    try:
+        if json.loads(read_text(uplugin)[0]).get("CanContainContent"):
+            return True
+    except (json.JSONDecodeError, OSError, TypeError):
+        pass
+    return (uplugin.parent / "Content").is_dir()
+
+
 def verify_plugins(engine_dir: Path, uproject: Path) -> bool:
     """Check every enabled plugin is enabled, mounted and its modules load in the editor, and that the
     project's assets using each plugin load without warnings. Prints a report; returns True if all pass."""
@@ -1186,7 +1207,8 @@ def verify_plugins(engine_dir: Path, uproject: Path) -> bool:
             problems.append("its .uplugin wasn't found")
         if not s["enabled"]:
             problems.append("not enabled")
-        if not s["mounted"]:
+        # Only plugins that can hold content get a mount point; code-only plugins never do.
+        if not s["mounted"] and plugin_has_content(path):
             problems.append("not mounted")
         missing = [m for m in mods if not s["modules"].get(m)]
         if missing:

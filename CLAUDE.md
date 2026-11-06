@@ -118,8 +118,11 @@ How it works:
   references any more. Property/Function redirects are **always kept** (Blueprint nodes may
   still store the old member names).
 - Verify plugins: every enabled plugin (from .uproject + project `Plugins/`) must be enabled,
-  mounted, its editor-loadable modules loaded (`/Script/<Module>` exists), and assets using
-  it must load. Reports OK / WARN (loads with warnings) / FAIL.
+  mounted **if it can hold content** (`CanContainContent` or a `Content/` folder;
+  code-only plugins never mount), its editor-loadable modules loaded (`/Script/<Module>`
+  exists, **or** `UnrealEditor-<Module>[-Win64-DebugGame].dll` is loaded, for modules with no
+  UObjects), and assets using it must load. Reports OK / WARN (loads with warnings) / FAIL.
+  Fixed 6 Nov: before, healthy code-only plugins failed both checks.
 
 ## GUI (`UnrealProjectRenamer.exe`) — current behaviour and user's choices
 
@@ -130,7 +133,24 @@ The user asked for these specifically — keep them:
   options in the UI.
 - **Always runs every follow-up step**: generate project files, build, resave assets,
   remove unused redirects (on), verify plugins. No checkboxes for these.
-- Only option left: **"Open in Unreal Editor when done"**, default **off**.
+- Only option left: **"Open in Unreal Editor when done"**, default **on** (changed 6 Nov at the user's request).
+- **New name** is capped at 20 characters (`MaxLength`) and shows a grey "Maximum 20 characters"
+  hint while empty (`EM_SETCUEBANNER`; needs visual styles, which `Main` enables). While a preview or rename runs,
+  `SetInputsLocked` greys out Project, Browse, New name, Engine version, Visual Studio and
+  the Open-in-editor box, and ignores dropped projects (added 6 Nov, tested in-process).
+- **Sounds** (`Sfx`, added 6 Nov): synthesized in code as in-memory .wav (no sound files),
+  played with `SoundPlayer` through the `MainForm.PlaySound` hook. Start = real rename begins
+  (not Preview, not the common-name re-run); Success = "Renamed and built"; Failure = not
+  renamed, or a follow-up step failed. Cancel and the common-name question are silent.
+  Tested in-process: refused rename (`Water`) → Start, Failure; full real rename of the
+  Tundra test project (4 code-only plugins, after the plugin-check fix) → Start, Success.
+- **Save Output Log** button (added 6 Nov), after Open folder: Save dialog (.txt, default
+  `<Project>_rename_log_<yyyy-MM-dd_HHmm>.txt` in the project folder), writes the log as UTF-8.
+  Disabled while running and while the log is empty (`UpdateSaveLogButton`, also on
+  `log.TextChanged`). `MainForm.AskSavePath` hook replaces the dialog in tests. Tested.
+- The log is cleared at the start of every run. Output lines carry their run number
+  (`runId`, `AppendFromRun`), so late lines from a stopped run can't reach the new log.
+  Tested: cancel a preview, start again → only the new run's output.
 - **Engine version** dropdown: "Keep current" + installed engines; pre-selects the newest
   engine if the project's association isn't registered on this PC (unless that's a
   downgrade). Picking an **older** engine shows an "Engine downgrade blocked" dialog with

@@ -33,14 +33,15 @@ behind the scenes, and runs on the .NET Framework that comes with Windows.
 4. **Project (.uproject):** click **Browse...** and pick the project's `.uproject`, or drag
    the `.uproject` (or its folder) onto the window.
 5. **New name:** type the new project name. It must start with a letter and use only
-   letters, digits and underscores, for example `SpaceRacer` or `Project_X2`. Keep it
-   short; Unreal recommends 20 characters or fewer.
+   letters, digits and underscores, for example `SpaceRacer` or `Project_X2`. It can be
+   up to 20 characters long (Unreal's recommended limit).
 6. **Engine version:** leave it on **Keep current**, or pick a newer installed engine to
    upgrade the project at the same time. Picking an **older** engine is blocked
    (see [Messages you might see](#messages-you-might-see)).
 7. **Visual Studio:** the newest Visual Studio that works with the chosen engine is picked
    for you. Change it only if you need a specific version.
-8. *(Optional)* tick **Open in Unreal Editor when done**.
+8. **Open in Unreal Editor when done** is ticked by default. Untick it if you don't want the
+   editor to open afterwards.
 9. Click **Preview changes**. This changes nothing. It lists every file that will be
    renamed or edited, the redirects that will be added, and any warnings. Read it.
 10. Click **Rename** and confirm.
@@ -49,8 +50,11 @@ behind the scenes, and runs on the .NET Framework that comes with Windows.
     several minutes. You can press **Cancel** while it's building or checking. It's greyed
     out at the moments when stopping could leave files half-written. If you cancel, the
     project is already renamed; just build it in Visual Studio or Unreal to finish.
+    A short sound plays when the rename starts, and another when it ends: a rising chime
+    if everything worked, two low notes if something needs your attention.
 12. When it says **"Renamed and built. All steps finished."**, click **Open folder** or open
-    the new `.uproject`, and check the project works.
+    the new `.uproject`, and check the project works. To keep a record of what happened (or
+    to share it when asking for help), click **Save Output Log** and choose where to save it.
 13. **Commit everything in one go**: renamed files, deleted old files, `DefaultEngine.ini`
     and the resaved assets.
     The app removes class and module redirects that no asset in **your** copy uses any
