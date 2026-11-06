@@ -29,7 +29,7 @@ namespace UnrealProjectRenamer
     static class Program
     {
         // App version: bump this for every build you hand out (major.minor.patch).
-        public const string Version = "0.17.0";
+        public const string Version = "0.17.1";
 
         [DllImport("user32.dll")]
         static extern bool SetProcessDPIAware();
@@ -1847,7 +1847,7 @@ namespace UnrealProjectRenamer
         {
             if (InvokeRequired) { BeginInvoke(new Action<string>(Append), line); return; }
             // The script ends with a "CHECK IN UNREAL EDITOR" list between ===== lines: show it in yellow.
-            if (line.StartsWith("CHECK IN UNREAL EDITOR")) inEditorChecks = true;
+            if (line.StartsWith("CHECK IN UNREAL EDITOR") || line.StartsWith("CONFIRM WORKING BUILD")) inEditorChecks = true;
             bool yellow = inEditorChecks || line.StartsWith("=====");
             log.SelectionStart = log.TextLength;
             log.SelectionLength = 0;

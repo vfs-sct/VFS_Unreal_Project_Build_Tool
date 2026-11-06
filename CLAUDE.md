@@ -130,7 +130,9 @@ How it works:
   up to 6 resaved maps, plugin-check WARN assets); the packaged .exe; existing start-up maps
   (`default_maps`: GameDefaultMap / EditorStartupMap under /Game). The app's log is a RichTextBox
   so `Append` colours everything from the `CHECK IN UNREAL EDITOR` header (and `=====` lines) in
-  `Theme.Highlight` yellow; Save Output Log writes plain text with CRLF.
+  `Theme.Highlight` yellow; Save Output Log writes plain text with CRLF. For `--action package` the
+  ending is only "CONFIRM WORKING BUILD:" + the packaged .exe (`BUILD_CHECK_HEADER`), also yellow.
+  The "old C++ names load through [CoreRedirects]" next step is shown after renames only.
 - Remove redirects: only Package/Class/Struct/Enum lines for old modules that no asset
   references any more. Property/Function redirects are **always kept** (Blueprint nodes may
   still store the old member names).

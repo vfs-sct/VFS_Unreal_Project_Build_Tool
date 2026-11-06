@@ -1051,11 +1051,14 @@ def is_map(root: Path, package: str) -> bool:
     return package.startswith("/Game/") and (root / "Content" / (package[len("/Game/"):] + ".umap")).exists()
 
 
-def print_editor_checks(items: list[tuple[str, str]]) -> None:
+BUILD_CHECK_HEADER = "CONFIRM WORKING BUILD:"
+
+
+def print_editor_checks(items: list[tuple[str, str]], header: str = EDITOR_CHECKS_HEADER) -> None:
     if not items:
         return
     print("\n" + "=" * 78)
-    print(EDITOR_CHECKS_HEADER)
+    print(header)
     for i, (what, why) in enumerate(items, 1):
         print(f"  {i}. {what}")
         print(f"     {why}")
@@ -1805,7 +1808,7 @@ def after_rename(args, new_uproject: Path) -> int:
         todo.append("Fix the plugins marked FAIL above (see their messages), then build again")
     if skipped:
         todo.append("Open the skipped assets listed above, fix their warnings, and save them")
-    elif not resaved_ok:
+    elif not resaved_ok and getattr(args, "action", None) is None:  # only a rename leaves old names behind
         todo.append("Assets that use the old C++ names load through the [CoreRedirects] in "
                     "Config/DefaultEngine.ini. Keep those lines unless every asset (on every branch) "
                     "has been resaved since the rename")
@@ -1825,6 +1828,13 @@ def after_rename(args, new_uproject: Path) -> int:
             items.insert(0, ("The project in Unreal Editor",
                              "Open it in the new engine. Check Window > Message Log for upgrade warnings; assets "
                              "are converted to the new engine when you save them."))
+        if packaged_ok and args.package and action == "package":
+            # A Package Build only needs the packaged game checked.
+            game = out_dir / "Windows" / f"{new_uproject.stem}.exe"
+            print_editor_checks([(str(game), "The packaged game: " +
+                                  ("it was started for you. " if args.launch else "start it. ") +
+                                  "Check it opens, loads the first level and plays.")], BUILD_CHECK_HEADER)
+            return 2 if failed else 0
         if packaged_ok and args.package:
             game = out_dir / "Windows" / f"{new_uproject.stem}.exe"
             items.append((str(game), "The packaged game: " + ("it was started for you. " if args.launch else "start it. ") +

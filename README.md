@@ -61,7 +61,8 @@ behind the scenes, and runs on the .NET Framework that comes with Windows.
    anything that failed. You can press **Cancel** at any time; nothing is lost. When it's done,
    **Open folder** opens the project, or the packaged build. The log ends with a **yellow
    "CHECK IN UNREAL EDITOR" list**: the maps, assets or packaged game to open, and why, so you
-   can confirm everything works.
+   can confirm everything works. For Package Build it's a short **"CONFIRM WORKING BUILD"** note
+   with just the packaged .exe to check.
 
 ## Rename a project
 
