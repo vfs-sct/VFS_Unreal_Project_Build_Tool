@@ -1384,7 +1384,7 @@ def main() -> int:
     ap.add_argument("--clean-cook", action="store_true",
                     help="with --cook/--package, delete old cooked data and cook everything (default: only recook "
                          "what changed)")
-    ap.add_argument("--package-dir", help="where --package saves the build (default: <project>/Packaged/<config>)")
+    ap.add_argument("--package-dir", help="where --package saves the build (default: <project>/Builds/<config>)")
     ap.add_argument("--engine-dir", help="engine root (e.g. 'C:/Program Files/Epic Games/UE_5.8'); "
                                          "found from EngineAssociation if omitted")
     ap.add_argument("--engine-association",
@@ -1626,7 +1626,7 @@ def after_rename(args, new_uproject: Path) -> int:
     packaged_ok = None
     if wants_package and built:
         if args.package:
-            out_dir = Path(args.package_dir).resolve() if args.package_dir else root / "Packaged" / args.package
+            out_dir = Path(args.package_dir).resolve() if args.package_dir else root / "Builds" / args.package
             print(f"\nCooking and packaging a {args.package} build"
                   f" ({'clean cook' if args.clean_cook else 'only recooking what changed'})...")
         else:

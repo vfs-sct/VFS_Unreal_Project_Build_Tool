@@ -37,7 +37,7 @@ behind the scenes, and runs on the .NET Framework that comes with Windows.
    by default only what changed is recooked (faster). Tick **Clean cook content** to delete
    old cooked data and cook everything from scratch (slower, safest, e.g. after a rename).
    **Build location** is where the packaged game is saved. It's filled in with the project's
-   `Packaged` folder; click **Browse...** to choose another.
+   `Builds` folder (also used if you leave it empty); click **Browse...** to choose another.
 5. **Engine version** and **Visual Studio:** leave them as they are, or pick a newer engine
    to upgrade the project before building (an older one is blocked).
 6. **On Finish Success:** what happens once it worked: **Do nothing**, or **Open in Unreal
@@ -90,7 +90,7 @@ behind the scenes, and runs on the .NET Framework that comes with Windows.
 14. **Teammates** sync, delete their `Binaries/` and `Intermediate/` folders, and open the
     new `.uproject`.
 
-## What it changes
+## What Rename Action changes
 
 | Changed | Not changed |
 |---|---|
@@ -110,7 +110,7 @@ After renaming, it automatically:
 4. removes redirects that no asset needs any more (see below).
 5. checks every enabled plugin still loads, and the assets that use it.
 
-## How your Blueprints keep working: redirects
+## How your Blueprints keep working after Rename Action: redirects
 
 Blueprints, levels and other assets store the C++ names they use, such as
 `/Script/MyGame.MyCharacter` or a property called `MyGameHealth`. If those names just

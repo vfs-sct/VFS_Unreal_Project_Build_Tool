@@ -176,8 +176,10 @@ The user asked for these specifically — keep them:
   `<dir>/Windows/<Project>.exe` detached; Cancel is disabled from "Launching" on, since killing the
   process tree would close the game). The output folder is the **Build location** row in the
   Action group (`buildLocationBox` + Browse via the `AskFolder` hook, Package Build only; filled
-  with `<project>\Packaged` when a project is picked unless the user changed it; empty blocks
-  Package), passed as `--package-dir`; Open folder then opens the build. (Until 6 Nov a folder
+  with `<project>\Builds` when a project is picked unless the user changed it; empty = `<project>\Builds`
+  (`ChosenBuildLocation`, grey hint says so); the old `<project>\Packaged` suggestion, if found in saved
+  settings, is swapped for Builds (`IsOldDefaultLocation`); the script's own fallback is also
+  `<project>/Builds/<config>`), passed as `--package-dir`; Open folder then opens the build. (Until 6 Nov a folder
   picker popped up on clicking Package instead.) Script: `cook_and_package` runs `RunUAT.bat BuildCookRun -platform=Win64 -cook
   -nocompileeditor [-clientconfig -build -stage -pak -archive -archivedirectory]` after the build
   (and the rename's checks), only if the editor build succeeded; prints `  Packaged: <dir>` /

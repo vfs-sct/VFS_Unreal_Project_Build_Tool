@@ -29,7 +29,7 @@ namespace UnrealProjectRenamer
     static class Program
     {
         // App version: bump this for every build you hand out (major.minor.patch).
-        public const string Version = "0.12.0";
+        public const string Version = "0.13.0";
 
         [DllImport("user32.dll")]
         static extern bool SetProcessDPIAware();
@@ -809,6 +809,8 @@ namespace UnrealProjectRenamer
             // New name belongs to Rename Project, so it sits in the Action group.
             // Grey hint shown while the box is empty (also while it has focus).
             nameBox.HandleCreated += (s, e) => SendMessage(nameBox.Handle, EM_SETCUEBANNER, (IntPtr)1, "Maximum 20 characters");
+            buildLocationBox.HandleCreated += (s, e) =>
+                SendMessage(buildLocationBox.Handle, EM_SETCUEBANNER, (IntPtr)1, "Empty = the project's Builds folder");
             nameLabel = AddRow(grid, "New name", Frame(nameBox), null);
 
             // A thin line under the Action group (Action, plus Rebuild Solution / Build / Clean cook content /
@@ -1088,7 +1090,12 @@ namespace UnrealProjectRenamer
             if (f.TryGetValue("Rebuild", out v)) rebuildBox.Checked = v == "1";
             if (f.TryGetValue("Build", out v) && buildConfigBox.Items.Contains(v)) buildConfigBox.SelectedItem = v;
             if (f.TryGetValue("CleanCook", out v)) cookContentBox.Checked = v == "1";
-            if (f.TryGetValue("BuildLocation", out v) && v.Length > 0) buildLocationBox.Text = v;
+            // A saved location is kept, except the old <project>/Packaged suggestion, which becomes <project>/Builds.
+            if (f.TryGetValue("BuildLocation", out v) && v.Length > 0)
+            {
+                if (IsOldDefaultLocation(v)) { autoBuildLocation = DefaultBuildLocation(); buildLocationBox.Text = autoBuildLocation; }
+                else buildLocationBox.Text = v;
+            }
             UpdateState();
         }
 
@@ -1328,15 +1335,36 @@ namespace UnrealProjectRenamer
             UpdateState();
         }
 
+        /// <summary>&lt;project folder&gt;\Builds, the Build location used when none is chosen; null without a project.</summary>
+        string DefaultBuildLocation()
+        {
+            return File.Exists(ProjectPath) ? Path.Combine(Path.GetDirectoryName(ProjectPath), "Builds") : null;
+        }
+
+        /// <summary>The Build location to package into: the field, or &lt;project&gt;\Builds when it's empty.</summary>
+        string ChosenBuildLocation()
+        {
+            var typed = buildLocationBox.Text.Trim();
+            return typed.Length > 0 ? typed : DefaultBuildLocation();
+        }
+
+        /// <summary>True for &lt;project&gt;\Packaged, the suggestion before 6 Nov (it may be in saved settings).</summary>
+        bool IsOldDefaultLocation(string path)
+        {
+            return File.Exists(ProjectPath) &&
+                   string.Equals(path.TrimEnd('\\'), Path.Combine(Path.GetDirectoryName(ProjectPath), "Packaged"),
+                                 StringComparison.OrdinalIgnoreCase);
+        }
+
         void ProjectChanged()
         {
             currentAssociation = "";
-            // Suggest <project>\Packaged as the Build location, unless the user typed or browsed their own.
-            if (File.Exists(ProjectPath))
+            // Suggest <project>\Builds as the Build location, unless the user typed or browsed their own.
+            var suggested = DefaultBuildLocation();
+            if (suggested != null)
             {
-                var suggested = Path.Combine(Path.GetDirectoryName(ProjectPath), "Packaged");
                 var current = buildLocationBox.Text.Trim();
-                if (current.Length == 0 || current == autoBuildLocation)
+                if (current.Length == 0 || current == autoBuildLocation || IsOldDefaultLocation(current))
                 {
                     autoBuildLocation = suggested;
                     buildLocationBox.Text = suggested;
@@ -1384,8 +1412,6 @@ namespace UnrealProjectRenamer
             else if (rename && nameBox.Text.Length == 0) problem = "Type the new project name.";
             else if (rename && !ValidName.IsMatch(nameBox.Text)) problem = "The name must start with a letter and use only letters, digits and underscores.";
             else if (rename && nameBox.Text == old) problem = "The new name is the same as the current one.";
-            else if (act == Act.Package && buildLocationBox.Text.Trim().Length == 0)
-                problem = "Choose a Build location for the packaged game.";
 
             // Engine / Visual Studio / Windows SDK problems block Rename (it builds), not Preview.
             var blocker = BuildBlocker();
@@ -1535,7 +1561,7 @@ namespace UnrealProjectRenamer
             }
 
             // Packaging goes to the Build location field.
-            packageDir = PackageConfig() != null ? buildLocationBox.Text.Trim() : null;
+            packageDir = PackageConfig() != null ? ChosenBuildLocation() : null; // empty = <project>/Builds
             SaveFields(CurrentAction); // remember what this run used
             Run(false);
         }
@@ -1545,10 +1571,32 @@ namespace UnrealProjectRenamer
         {
             using (var dlg = new FolderBrowserDialog { Description = title, ShowNewFolderButton = true })
             {
-                dlg.SelectedPath = Directory.Exists(start) ? start : Path.GetDirectoryName(start);
+                var folder = NearestExistingFolder(start);
+                if (folder != null) dlg.SelectedPath = folder;
                 return dlg.ShowDialog(owner) == DialogResult.OK ? dlg.SelectedPath : null;
             }
         };
+
+        /// <summary>The folder itself if it exists, else its nearest existing parent; null for an empty or
+        /// invalid path (e.g. nothing picked yet, or a typed path with characters Windows doesn't allow).</summary>
+        internal static string NearestExistingFolder(string path)
+        {
+            try
+            {
+                path = (path ?? "").Trim();
+                while (path.Length > 0)
+                {
+                    if (Directory.Exists(path)) return path;
+                    var parent = Path.GetDirectoryName(path);
+                    if (string.IsNullOrEmpty(parent) || parent == path) break;
+                    path = parent;
+                }
+            }
+            catch (ArgumentException) { }       // characters not allowed in a path
+            catch (NotSupportedException) { }   // e.g. a stray ':' in the middle
+            catch (PathTooLongException) { }
+            return null;
+        }
 
         string WhenDone { get { return whenDoneBox.SelectedItem as string ?? DoNothing; } }
 
