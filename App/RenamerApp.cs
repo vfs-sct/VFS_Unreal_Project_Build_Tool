@@ -29,7 +29,7 @@ namespace UnrealProjectRenamer
     static class Program
     {
         // App version: bump this for every build you hand out (major.minor.patch).
-        public const string Version = "0.15.0";
+        public const string Version = "0.16.0";
 
         [DllImport("user32.dll")]
         static extern bool SetProcessDPIAware();
@@ -792,7 +792,7 @@ namespace UnrealProjectRenamer
             AddSeparator(grid);
 
             actionBox.Items.AddRange(ActionNames);
-            actionBox.SelectedIndex = (int)Act.Build;
+            actionBox.SelectedIndex = (int)Act.Regenerate; // the default action (until settings restore the last one)
             actionBox.Width = 260;
             actionBox.Margin = new Padding(3);
             AddRow(grid, "Action", Host(actionBox), null);

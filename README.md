@@ -30,8 +30,9 @@ behind the scenes, and runs on the .NET Framework that comes with Windows.
    **More info → Run anyway**.
 3. **Project (.uproject):** click **Browse...** and pick the project's `.uproject`, or drag
    the `.uproject` (or its folder) onto the window.
-4. **Action:** pick **Build Solution** (the default), **Regenerate Visual Studio project
-   files**, **Package Build** or **Upgrade Project Version**. Tick **Rebuild Solution** under it to clean and then build
+4. **Action:** pick **Build Solution**, **Regenerate Visual Studio project
+   files** (the default), **Package Build** or **Upgrade Project Version**. The app reopens on
+   the action you used last. Tick **Rebuild Solution** under it to clean and then build
    everything (slower; use it when a normal build acts up).
    **Regenerate Visual Studio project files** gives Visual Studio a clean start: it deletes
    `.vs`, `Binaries`, `DerivedDataCache`, `Intermediate`, `.vsconfig` and the `.sln` /
@@ -52,7 +53,7 @@ behind the scenes, and runs on the .NET Framework that comes with Windows.
    engine is blocked. Every other action uses the project's current engine.
 5. **Visual Studio:** leave it as it is; the newest one that works with the engine is picked.
 6. **On Finish Success:** what happens once it worked: **Do nothing**, or **Open in Unreal
-   Editor when done** (the default for Build Solution). Package Build adds **Launch .exe**
+   Editor when done** (the default for the other actions). Package Build adds **Launch .exe**
    (its default), which starts the packaged game. Package Build keeps the editor closed.
 7. Click **Build** (it reads **Rebuild** when Rebuild Solution is ticked), **Regenerate**,
    **Package** or **Upgrade**.

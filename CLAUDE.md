@@ -137,8 +137,8 @@ The user asked for these specifically — keep them:
   options in the UI.
 - **Always runs every follow-up step**: generate project files, build, resave assets,
   remove unused redirects (on), verify plugins. No checkboxes for these.
-- **Action** dropdown at the top (`actionBox`, `enum Act`, added 6 Nov): **Build Solution
-  (default)**, Regenerate Visual Studio project files, Package Build, Upgrade Project Version, Rename
+- **Action** dropdown at the top (`actionBox`, `enum Act`, added 6 Nov): Build Solution,
+  **Regenerate Visual Studio project files (default since 6 Nov; app reopens on the last action)**, Package Build, Upgrade Project Version, Rename
   Project. Settings store the enum names, so the order can change.
   **Upgrade Project Version** (`--action upgrade --engine-association X`, added 6 Nov): the **Engine
   version row shows only for this action** (`engineLabel` + its row; every other action uses the
