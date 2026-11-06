@@ -438,6 +438,47 @@ def rewrite_mode(plan: Plan, rel: Path) -> str | None:
     return "full" if len(rel.parts) == 1 or top in ("Source", "Config") else None
 
 
+def _plugin_text_files(pdir: Path):
+    for f in pdir.rglob("*"):
+        if f.is_file() and f.suffix.lower() in PLUGIN_TEXT_SUFFIXES and \
+                not any(p in ("Intermediate", "Binaries", "Saved") for p in f.relative_to(pdir).parts):
+            yield f
+
+
+def plugin_declared_names(src_root: Path, old: str) -> set[str]:
+    """Names the project's own plugins declare (types, members, delegates, enum values, plain
+    class/struct/enum/namespace names and file names) that contain the old name. They belong to the
+    plugin, so they're protected even when the game's code mentions them."""
+    found: set[str] = set()
+    for uplugin in src_root.glob("Plugins/**/*.uplugin"):
+        src = uplugin.parent / "Source"
+        if not src.is_dir() or should_skip(uplugin.parent.relative_to(src_root)):
+            continue
+        r = scan_reflected(src)
+        for names in r.types.values():
+            found |= names
+        found |= {m[2] for m in r.members} | r.delegates
+        for values in r.enum_values.values():
+            found |= set(values)
+        for f in src.rglob("*"):
+            if not f.is_file() or "Intermediate" in f.parts:
+                continue
+            found.add(f.name.split(".")[0])
+            if f.suffix.lower() in (".h", ".hpp", ".cpp", ".inl", ".cs") and (res := read_text(f)):
+                for m in _PLAIN_DECL_RE.finditer(_blank_comments(res[0])):
+                    found.add(next(g for g in m.groups() if g))
+    return {n for n in found if old in n}
+
+
+def plugin_mentions_modules(pdir: Path, modules: list[str]) -> bool:
+    """True when any of the plugin's code or config files mentions /Script/<game module>, for
+    example a config entry pointing at one of the game's classes."""
+    if not modules:
+        return False
+    pat = re.compile(r"/Script/(?:" + "|".join(re.escape(m) for m in modules) + r")(?![A-Za-z0-9_])")
+    return any((res := read_text(f)) and pat.search(res[0]) for f in _plugin_text_files(pdir))
+
+
 def build_plan(src_root: Path, uproject: Path, new: str, dst_root: Path, engine_dir: Path | None = None) -> Plan:
     old = uproject.stem
     plan = Plan(old=old, new=new, src_root=src_root, dst_root=dst_root)
@@ -475,7 +516,7 @@ def build_plan(src_root: Path, uproject: Path, new: str, dst_root: Path, engine_
     else:
         plan.warnings.append("The engine wasn't found, so engine names that contain the old name can't be protected. "
                              "Review the dry run carefully.")
-    plugin_known = names_in_tree(src_root / "Plugins", [old, new])
+    plugin_known = names_in_tree(src_root / "Plugins", [old, new]) | plugin_declared_names(src_root, old)
     plan.protected = {n for n in engine_known | plugin_known if old in n} - defined
 
     # Old name too common to replace safely: part of engine names, or a plain word.
@@ -525,7 +566,8 @@ def build_plan(src_root: Path, uproject: Path, new: str, dst_root: Path, engine_
         if should_skip(pdir.relative_to(src_root)):
             continue
         rules = " ".join(res[0] for bc in pdir.rglob("*.Build.cs") if (res := read_text(bc)))
-        if any(re.search(r'"' + re.escape(mod) + r'"', rules) for mod in modules):
+        if any(re.search(r'"' + re.escape(mod) + r'"', rules) for mod in modules) or \
+                plugin_mentions_modules(pdir, modules):
             plan.plugin_dirs.append(pdir.relative_to(src_root))
 
     # Redirects so existing assets still find the renamed module, types, members and values.

@@ -76,6 +76,9 @@ How it works:
   name are left alone, also with an A/U/F/I/E/T/S prefix (`UTundraToolsLibrary`). The
   project's own names (`defined`: modules, files, reflected types and members, plain
   class/struct/enum/namespace declarations incl. `.cs`) always win. The scan takes ~5 s.
+  Names the project's **plugins declare** (`plugin_declared_names`: reflected types, members,
+  delegates, enum values, plain declarations, file names) are protected too, so a plugin's
+  own `FTundraPluginData` / `TundraHelperFn` stays as it is in the plugin and in the game (added 6 Nov).
 - **Clashes** (fix 7) are errors: a renamed module equal to an engine/plugin module or
   plugin (case-insensitive), or a renamed class/struct equal to an engine header name.
   Paths ≥ 250 chars are errors, > 200 warnings.
@@ -85,7 +88,8 @@ How it works:
   `Arena` builds (before this, `TargetType.Game`, `FDefaultGameModuleImpl`, and
   `GameFramework/` got renamed).
 - **Plugins that use the project** (fix 5): a project plugin whose `.Build.cs` names a
-  project module gets the project's identifiers (`plugin_map`) renamed in its source,
+  project module, or any of whose code/config files mention `/Script/<project module>`
+  (`plugin_mentions_modules`, added 6 Nov, e.g. a config-only reference), gets the project's identifiers (`plugin_map`) renamed in its source,
   `.Build.cs`, `.uplugin` and `.ini` — nothing else, so its own names stay.
 - **Downgrades refused**: `--engine-association` older than the current engine (version
   from `5.x` or a source build's `Engine/Build/Build.version`).
