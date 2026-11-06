@@ -51,7 +51,9 @@ behind the scenes, and runs on the .NET Framework that comes with Windows.
     out at the moments when stopping could leave files half-written. If you cancel, the
     project is already renamed; just build it in Visual Studio or Unreal to finish.
     A short sound plays when the rename starts, and another when it ends: a rising chime
-    if everything worked, two low notes if something needs your attention.
+    if everything worked, two low notes if something needs your attention. If it fails, a
+    popup says which step went wrong and whether anything was changed, with a **Save Output
+    Log** button. Cancelling never shows this popup.
 12. When it says **"Renamed and built. All steps finished."**, click **Open folder** or open
     the new `.uproject`, and check the project works. To keep a record of what happened (or
     to share it when asking for help), click **Save Output Log** and choose where to save it.

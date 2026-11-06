@@ -29,7 +29,7 @@ namespace UnrealProjectRenamer
     static class Program
     {
         // App version: bump this for every build you hand out (major.minor.patch).
-        public const string Version = "0.10.0";
+        public const string Version = "0.11.0";
 
         [DllImport("user32.dll")]
         static extern bool SetProcessDPIAware();
@@ -801,7 +801,10 @@ namespace UnrealProjectRenamer
                     e.Cancel = true;
                 }
                 else if (DarkDialog.Ask(this, Text, "A rename is still running. Stop it and close?", true, "Stop and close", "Keep running"))
+                {
+                    cancelled = true; // stopped by the user: no failure sound or popup
                     KillRun();
+                }
                 else
                     e.Cancel = true;
             };
@@ -1046,6 +1049,48 @@ namespace UnrealProjectRenamer
             AllowDrop = !locked;
         }
 
+        /// <summary>Popup after a rename that failed on its own (never after Cancel), with Save Output Log.</summary>
+        void ShowFailure(string title, string message)
+        {
+            if (AskUser(this, title, message, "Save Output Log", "OK")) SaveLog();
+        }
+
+        /// <summary>What went wrong, worked out from the script's output.</summary>
+        string FailureMessage(bool renamed)
+        {
+            var lines = log.Lines;
+            Func<string, bool> has = pattern => lines.Any(l => Regex.IsMatch(l, pattern));
+
+            if (!renamed)
+            {
+                if (has(@"^Traceback "))
+                    return "The rename stopped with an unexpected error.\n\nSome files may already have been changed. " +
+                           "Check the project with git (for example git status) before trying again, and save the " +
+                           "output log if you need help.";
+                var why = lines.Where(l => l.StartsWith("error: ") && !l.Contains("COMMON NAME"))
+                               .Select(l => "- " + l.Substring(7).Trim()).Distinct().Take(3).ToList();
+                return "The project wasn't renamed. Nothing was changed.\n\n" +
+                       (why.Count > 0 ? "Why:\n" + string.Join("\n", why) : "The output log has the details.");
+            }
+
+            var steps = new List<string>();
+            if (has(@"couldn't find the engine for the follow-up steps"))
+                steps.Add("- The engine wasn't found, so nothing was built.");
+            if (has(@"project file generation failed"))
+                steps.Add("- Generating the Visual Studio project files failed.");
+            if (has(@"build FAILED"))
+                steps.Add("- The build failed, so the asset resave and plugin check were skipped.");
+            if (has(@"^\s+(SKIPPED|FAILED)\s"))
+                steps.Add("- Some assets couldn't be resaved (listed in the log). Open them in the editor, fix them and save them.");
+            if (has(@"^\s+FAIL\s") || has(@"FAILED: the editor didn't start"))
+                steps.Add("- The plugin check found plugins that didn't load (marked FAIL in the log).");
+            if (steps.Count == 0)
+                steps.Add("- A step after the rename reported a problem. The output log has the details.");
+            return "The project was renamed, but some steps after the rename need attention:\n\n" +
+                   string.Join("\n", steps) +
+                   "\n\nThe renamed files are kept. Fix the problem, then build the project in Visual Studio or Unreal.";
+        }
+
         /// <summary>Save Output Log: only when there's a log and nothing is running.</summary>
         void UpdateSaveLogButton()
         {
@@ -1264,9 +1309,9 @@ namespace UnrealProjectRenamer
         void CancelRun()
         {
             if (running == null || running.HasExited || !cancellable) return;
-            if (!runIsPreview && !DarkDialog.Ask(this, "Stop", "Stop the remaining steps?\n\nThe project is already renamed. " +
+            if (!runIsPreview && !AskUser(this, "Stop", "Stop the remaining steps?\n\nThe project is already renamed. " +
                     "Stopping now skips whatever is left (build, asset resave or plugin check). You can finish later by " +
-                    "building the project in Visual Studio or Unreal.", true, "Stop", "Keep going"))
+                    "building the project in Visual Studio or Unreal.", "Stop", "Keep going"))
                 return;
             if (running == null || running.HasExited || !cancellable) return; // it moved on while the dialog was open
             cancelled = true;
@@ -1332,11 +1377,13 @@ namespace UnrealProjectRenamer
             {
                 status.Text = "Failed - see the messages above.";
                 PlaySound(Sfx.Kind.Failure);
+                ShowFailure("Rename failed", FailureMessage(false));
             }
             else if (code != 0)
             {
                 status.Text = "Renamed, but a follow-up step needs attention - see the messages above.";
                 PlaySound(Sfx.Kind.Failure);
+                ShowFailure("Rename needs attention", FailureMessage(true));
             }
             else
             {

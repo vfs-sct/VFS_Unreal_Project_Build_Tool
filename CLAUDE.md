@@ -148,6 +148,13 @@ The user asked for these specifically — keep them:
   `<Project>_rename_log_<yyyy-MM-dd_HHmm>.txt` in the project folder), writes the log as UTF-8.
   Disabled while running and while the log is empty (`UpdateSaveLogButton`, also on
   `log.TextChanged`). `MainForm.AskSavePath` hook replaces the dialog in tests. Tested.
+- **Failure popup** (added 6 Nov): after a real rename that fails on its own, `ShowFailure`
+  (through the `AskUser` hook) shows "Rename failed" (not renamed: the script's `error:` lines,
+  "Nothing was changed"; a `Traceback` instead warns files may have changed) or "Rename needs
+  attention" (renamed, exit 2: which of engine/project files/build/resave/plugin check failed,
+  from `FailureMessage`). Buttons: Save Output Log / OK. Never after Cancel or closing the
+  window (both set `cancelled`), nor for Preview. `CancelRun`'s "Stop" question now also goes
+  through `AskUser`.
 - The log is cleared at the start of every run. Output lines carry their run number
   (`runId`, `AppendFromRun`), so late lines from a stopped run can't reach the new log.
   Tested: cancel a preview, start again → only the new run's output.
