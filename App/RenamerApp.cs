@@ -29,7 +29,7 @@ namespace UnrealProjectRenamer
     static class Program
     {
         // App version: bump this for every build you hand out (major.minor.patch).
-        public const string Version = "0.13.0";
+        public const string Version = "0.13.1";
 
         [DllImport("user32.dll")]
         static extern bool SetProcessDPIAware();
@@ -810,7 +810,7 @@ namespace UnrealProjectRenamer
             // Grey hint shown while the box is empty (also while it has focus).
             nameBox.HandleCreated += (s, e) => SendMessage(nameBox.Handle, EM_SETCUEBANNER, (IntPtr)1, "Maximum 20 characters");
             buildLocationBox.HandleCreated += (s, e) =>
-                SendMessage(buildLocationBox.Handle, EM_SETCUEBANNER, (IntPtr)1, "Empty = the project's Builds folder");
+                SendMessage(buildLocationBox.Handle, EM_SETCUEBANNER, (IntPtr)1, "Choose a folder for the packaged game");
             nameLabel = AddRow(grid, "New name", Frame(nameBox), null);
 
             // A thin line under the Action group (Action, plus Rebuild Solution / Build / Clean cook content /
@@ -973,6 +973,8 @@ namespace UnrealProjectRenamer
         void ActionChanged()
         {
             var act = CurrentAction;
+            // Save the action we're leaving first, while its own values are still on screen.
+            if (settingsLoaded && act != shownAction) SaveFields(shownAction);
             bool rename = act == Act.Rename;
             nameBox.Parent.Visible = rename; // the frame around the box
             if (nameLabel != null) nameLabel.Visible = rename;
@@ -987,20 +989,20 @@ namespace UnrealProjectRenamer
             if (buildLocationLabel != null) buildLocationLabel.Visible = package;
             if (buildConfigLabel != null) buildConfigLabel.Visible = package;
 
-            // Each action starts on its own default choice...
+            // Each action starts on its own defaults (Project, Engine version and Visual Studio carry over)...
             FillWhenDone(package ? PackageWhenDoneDefault : Array.IndexOf(BasicWhenDone, OpenEditor));
+            rebuildBox.Checked = false;
+            cookContentBox.Checked = false;
+            buildConfigBox.SelectedIndex = 0; // Development
+            if (DefaultBuildLocation() != null) { autoBuildLocation = DefaultBuildLocation(); buildLocationBox.Text = autoBuildLocation; }
             // ...then gets back what it had last time, if anything.
-            if (settingsLoaded)
-            {
-                SaveFields(shownAction); // the action we're leaving
-                RestoreFields(act);
-            }
+            if (settingsLoaded) RestoreFields(act);
             shownAction = act;
         }
 
         // ------------------------------------------------------------------ remembered inputs (per action)
 
-        static readonly string SettingsFile = Path.Combine(
+        internal static string SettingsFile = Path.Combine( // replaceable so tests never touch the real file
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "VFSUnrealProjectBuildTool", "settings.json");
         Dictionary<string, Dictionary<string, string>> savedFields = new Dictionary<string, Dictionary<string, string>>();
         bool settingsLoaded;  // false until LoadSettings ran (so start-up doesn't save half-filled fields)
@@ -1031,10 +1033,11 @@ namespace UnrealProjectRenamer
             shownAction = CurrentAction;
             settingsLoaded = true;
             Act lastAct;
+            // Show the starting action's own saved fields first: switching to the last-used action saves the
+            // action being left, and it must save what was remembered, not the still-empty start-up fields.
+            RestoreFields(CurrentAction);
             if (last != null && Enum.TryParse(last, out lastAct) && lastAct != CurrentAction)
-                actionBox.SelectedIndex = (int)lastAct; // ActionChanged restores its fields
-            else
-                RestoreFields(CurrentAction);
+                actionBox.SelectedIndex = (int)lastAct; // ActionChanged saves the start action, restores this one
         }
 
         /// <summary>Remembers the on-screen fields for <paramref name="act"/> and writes settings.json.</summary>
@@ -1095,6 +1098,12 @@ namespace UnrealProjectRenamer
             {
                 if (IsOldDefaultLocation(v)) { autoBuildLocation = DefaultBuildLocation(); buildLocationBox.Text = autoBuildLocation; }
                 else buildLocationBox.Text = v;
+            }
+            // Nothing saved (or saved empty) but a project is set: suggest <project>\Builds.
+            if (buildLocationBox.Text.Trim().Length == 0 && DefaultBuildLocation() != null)
+            {
+                autoBuildLocation = DefaultBuildLocation();
+                buildLocationBox.Text = autoBuildLocation;
             }
             UpdateState();
         }
@@ -1341,11 +1350,11 @@ namespace UnrealProjectRenamer
             return File.Exists(ProjectPath) ? Path.Combine(Path.GetDirectoryName(ProjectPath), "Builds") : null;
         }
 
-        /// <summary>The Build location to package into: the field, or &lt;project&gt;\Builds when it's empty.</summary>
+        /// <summary>The Build location to package into (Package is greyed out while it's empty).</summary>
         string ChosenBuildLocation()
         {
             var typed = buildLocationBox.Text.Trim();
-            return typed.Length > 0 ? typed : DefaultBuildLocation();
+            return typed.Length > 0 ? typed : null;
         }
 
         /// <summary>True for &lt;project&gt;\Packaged, the suggestion before 6 Nov (it may be in saved settings).</summary>
@@ -1412,6 +1421,8 @@ namespace UnrealProjectRenamer
             else if (rename && nameBox.Text.Length == 0) problem = "Type the new project name.";
             else if (rename && !ValidName.IsMatch(nameBox.Text)) problem = "The name must start with a letter and use only letters, digits and underscores.";
             else if (rename && nameBox.Text == old) problem = "The new name is the same as the current one.";
+            else if (act == Act.Package && buildLocationBox.Text.Trim().Length == 0)
+                problem = "Choose a Build location for the packaged game (Browse...).";
 
             // Engine / Visual Studio / Windows SDK problems block Rename (it builds), not Preview.
             var blocker = BuildBlocker();
@@ -1561,7 +1572,7 @@ namespace UnrealProjectRenamer
             }
 
             // Packaging goes to the Build location field.
-            packageDir = PackageConfig() != null ? ChosenBuildLocation() : null; // empty = <project>/Builds
+            packageDir = PackageConfig() != null ? ChosenBuildLocation() : null;
             SaveFields(CurrentAction); // remember what this run used
             Run(false);
         }

@@ -21,8 +21,9 @@ if not defined CSC set "CSC=%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\csc.ex
 set "RESULT=%ERRORLEVEL%"
 rem If the app is open while building, the compiler renames the running copy to
 rem <guid>_VFSUnrealProjectBuildTool.exe (a running .exe can be renamed but not overwritten)
-rem and writes the new .exe. Remove those old copies; one still running is skipped until closed.
-del /q "%HERE%..\*_VFSUnrealProjectBuildTool.exe" 2>nul
+rem and writes the new .exe. It also marks that copy hidden, so del needs /a. Remove those old
+rem copies; one still running is skipped until it is closed.
+del /f /q /a "%HERE%..\*_VFSUnrealProjectBuildTool.exe" 2>nul
 if not "%RESULT%"=="0" (
     echo Build failed. If it says the .exe is in use, close the app and run this again.
     exit /b 1

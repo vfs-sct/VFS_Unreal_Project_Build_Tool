@@ -166,9 +166,15 @@ The user asked for these specifically — keep them:
 - **Remembered inputs, per action** (added 6 Nov): `%APPDATA%\VFSUnrealProjectBuildTool\settings.json`
   holds `LastAction` and, for each action, Project, NewName, Engine, VisualStudio (install path),
   OnFinishSuccess, Rebuild, Build, CleanCook, BuildLocation. `ActionChanged` saves the action being
-  left and restores the new one (`SaveFields` / `RestoreFields`); also saved on closing and when a run
-  starts; the app opens on the last action (`LoadSettings`). A saved engine that would now be a
-  downgrade, or a VS that's gone, is skipped. Not tested yet.
+  left **before** touching the screen, resets the action options to their defaults (On Finish
+  Success: Open in Editor, or Launch .exe for Package; Rebuild/Clean cook off; Development;
+  `<project>\Builds`) — Project / Engine / VS carry over — then restores the new action's saved
+  values (`SaveFields` / `RestoreFields`). Also saved on closing and when a run starts. `LoadSettings`
+  restores the start action's own fields before switching to the last-used action, so start-up
+  doesn't overwrite them with empty values. Two bugs fixed 6 Nov: start-up wiped Build Solution's
+  saved inputs, and switching saved the new action's default On Finish Success into the old action.
+  Tested in-process with a scratch settings file (`MainForm.SettingsFile` is replaceable for that):
+  each action keeps its own On Finish Success / Rebuild / Build across switches and restarts.
   Rebuild Solution and Clean cook content have hover tooltips explaining them
   (`Theme.DarkToolTip`: owner-drawn in the dark theme, wrapped at 360 px, 30 s display). `WhenDoneArgs` → `--package <config>
   [--clean-cook]` (+ `--open-editor` or `--launch`). The script still supports `--cook` (cook
@@ -176,8 +182,8 @@ The user asked for these specifically — keep them:
   `<dir>/Windows/<Project>.exe` detached; Cancel is disabled from "Launching" on, since killing the
   process tree would close the game). The output folder is the **Build location** row in the
   Action group (`buildLocationBox` + Browse via the `AskFolder` hook, Package Build only; filled
-  with `<project>\Builds` when a project is picked unless the user changed it; empty = `<project>\Builds`
-  (`ChosenBuildLocation`, grey hint says so); the old `<project>\Packaged` suggestion, if found in saved
+  with `<project>\Builds` when a project is picked unless the user changed it; empty greys out
+  Package (the user's choice, 6 Nov; grey hint "Choose a folder for the packaged game"); the old `<project>\Packaged` suggestion, if found in saved
   settings, is swapped for Builds (`IsOldDefaultLocation`); the script's own fallback is also
   `<project>/Builds/<config>`), passed as `--package-dir`; Open folder then opens the build. (Until 6 Nov a folder
   picker popped up on clicking Package instead.) Script: `cook_and_package` runs `RunUAT.bat BuildCookRun -platform=Win64 -cook

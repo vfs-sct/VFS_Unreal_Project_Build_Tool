@@ -37,7 +37,7 @@ behind the scenes, and runs on the .NET Framework that comes with Windows.
    by default only what changed is recooked (faster). Tick **Clean cook content** to delete
    old cooked data and cook everything from scratch (slower, safest, e.g. after a rename).
    **Build location** is where the packaged game is saved. It's filled in with the project's
-   `Builds` folder (also used if you leave it empty); click **Browse...** to choose another.
+   `Builds` folder; click **Browse...** to choose another. **Package** stays greyed out while it's empty.
 5. **Engine version** and **Visual Studio:** leave them as they are, or pick a newer engine
    to upgrade the project before building (an older one is blocked).
 6. **On Finish Success:** what happens once it worked: **Do nothing**, or **Open in Unreal
