@@ -29,7 +29,7 @@ namespace UnrealProjectRenamer
     static class Program
     {
         // App version: bump this for every build you hand out (major.minor.patch).
-        public const string Version = "0.16.2";
+        public const string Version = "0.17.0";
 
         [DllImport("user32.dll")]
         static extern bool SetProcessDPIAware();
@@ -376,6 +376,7 @@ namespace UnrealProjectRenamer
         public static readonly Color Accent = Color.FromArgb(217, 119, 87);
         public static readonly Color AccentHover = Color.FromArgb(229, 137, 107);
         public static readonly Color Warn = Color.FromArgb(224, 164, 88);
+        public static readonly Color Highlight = Color.FromArgb(250, 204, 21); // yellow: the "check in the editor" list
 
         [DllImport("dwmapi.dll")]
         static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int value, int size);
@@ -404,7 +405,7 @@ namespace UnrealProjectRenamer
                 root.BackColor = Back;
                 if (root.ForeColor != Warn) root.ForeColor = Text;
             }
-            var tb = root as TextBox;
+            var tb = root as TextBoxBase; // text boxes and the rich-text log
             if (tb != null)
             {
                 tb.BackColor = Surface;
@@ -745,7 +746,7 @@ namespace UnrealProjectRenamer
         readonly Button cancelButton = new Button { Text = "Cancel", AutoSize = true, Visible = false };
         readonly Button openButton = new Button { Text = "Open folder", AutoSize = true, Enabled = false };
         readonly Button saveLogButton = new Button { Text = "Save Output Log", AutoSize = true, Enabled = false };
-        readonly TextBox log = new TextBox();
+        readonly RichTextBox log = new RichTextBox(); // rich text so the final "Check in Unreal Editor" section can be yellow
         readonly Label status = new Label { AutoSize = true, Text = "Pick a .uproject to start." };
 
         string currentAssociation = "";
@@ -756,6 +757,7 @@ namespace UnrealProjectRenamer
         bool settingEngine;        // engine choice is being set by code, not by the user
         bool allowCommonName;      // the user confirmed renaming a project with a common-word name
         int runId;                 // counts runs, so output from an earlier run can't reach the new log
+        bool inEditorChecks;       // the log has reached the final "Check in Unreal Editor" list (shown yellow)
 
         // Dialogs, replaceable so tests can answer them.
         internal static Action<IWin32Window, string, string> Notify = (o, t, m) => DarkDialog.Show(o, t, m);
@@ -854,8 +856,9 @@ namespace UnrealProjectRenamer
             AddSeparator(grid);
 
             log.Multiline = true;
+            log.DetectUrls = false;
             log.ReadOnly = true;
-            log.ScrollBars = ScrollBars.Both;
+            log.ScrollBars = RichTextBoxScrollBars.Both;
             log.WordWrap = false;
             log.Font = new Font("Consolas", 9f);
             log.BackColor = SystemColors.Window;
@@ -1566,7 +1569,7 @@ namespace UnrealProjectRenamer
             if (path == null) return;
             try
             {
-                File.WriteAllText(path, log.Text, new UTF8Encoding(false));
+                File.WriteAllText(path, string.Join(Environment.NewLine, log.Lines), new UTF8Encoding(false)); // Windows line endings
                 status.Text = "Output log saved to " + path;
             }
             catch (Exception ex)
@@ -1794,6 +1797,7 @@ namespace UnrealProjectRenamer
             // Each run starts with an empty log; lines still arriving from an earlier run are dropped.
             int id = ++runId;
             log.Clear();
+            inEditorChecks = false;
             lastResultFolder = null;
             packagedFolder = null;
             runIsPreview = dryRun;
@@ -1842,7 +1846,15 @@ namespace UnrealProjectRenamer
         void Append(string line)
         {
             if (InvokeRequired) { BeginInvoke(new Action<string>(Append), line); return; }
+            // The script ends with a "CHECK IN UNREAL EDITOR" list between ===== lines: show it in yellow.
+            if (line.StartsWith("CHECK IN UNREAL EDITOR")) inEditorChecks = true;
+            bool yellow = inEditorChecks || line.StartsWith("=====");
+            log.SelectionStart = log.TextLength;
+            log.SelectionLength = 0;
+            log.SelectionColor = yellow ? Theme.Highlight : log.ForeColor;
             log.AppendText(line + Environment.NewLine);
+            log.SelectionColor = log.ForeColor;
+            log.ScrollToCaret();
             var m = Regex.Match(line, @"^Done: (.+\.uproject)\s*$");
             if (m.Success) lastResultFolder = Path.GetDirectoryName(m.Groups[1].Value);
             var pk = Regex.Match(line, @"^\s+Packaged: (.+?)\s*$");

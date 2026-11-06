@@ -1018,6 +1018,50 @@ def run_in_editor(engine_dir: Path, uproject: Path, mode: str, packages: list[st
     return parse_package_results(lines, packages, quiet=True, all_problems=problems)
 
 
+# Things to look at in Unreal Editor afterwards: (asset or file, why). Collected while the steps run and
+# printed together at the very end of the log (the app shows that section in yellow).
+EDITOR_CHECKS: list[tuple[str, str]] = []
+EDITOR_CHECKS_HEADER = "CHECK IN UNREAL EDITOR - confirm these to know everything works:"
+
+
+def note_check(what: str, why: str) -> None:
+    """Remember something to check in the editor (the first reason per item wins)."""
+    if all(w != what for w, _ in EDITOR_CHECKS):
+        EDITOR_CHECKS.append((what, why))
+
+
+def first_problem(package: str, problems: dict[str, list[str]], none: str = "no reason was logged") -> str:
+    lines = problems.get(package, [])
+    return readable_problem(lines[0], package)[:200] if lines else none
+
+
+def default_maps(root: Path) -> list[str]:
+    """The project's start-up maps (GameDefaultMap / EditorStartupMap), except engine ones."""
+    ini = root / "Config" / "DefaultEngine.ini"
+    found: list[str] = []
+    if ini.exists():
+        for key, value in re.findall(r"^\s*(GameDefaultMap|EditorStartupMap)\s*=\s*(\S+)", read_text(ini)[0], re.M):
+            path = value.strip("\"'").split(".")[0]
+            if path.startswith("/Game/") and path not in found and is_map(root, path):
+                found.append(path)
+    return found
+
+
+def is_map(root: Path, package: str) -> bool:
+    return package.startswith("/Game/") and (root / "Content" / (package[len("/Game/"):] + ".umap")).exists()
+
+
+def print_editor_checks(items: list[tuple[str, str]]) -> None:
+    if not items:
+        return
+    print("\n" + "=" * 78)
+    print(EDITOR_CHECKS_HEADER)
+    for i, (what, why) in enumerate(items, 1):
+        print(f"  {i}. {what}")
+        print(f"     {why}")
+    print("=" * 78)
+
+
 def readable_problem(line: str, package: str) -> str:
     """An editor log line, shortened: no timestamp; an "[AssetLog] <path>:" prefix becomes "(in <file>)"
     when it's about another asset than `package` (warnings often come from assets it loads)."""
@@ -1108,6 +1152,9 @@ def resave_assets(engine_dir: Path, uproject: Path, old_packages: list[str]) -> 
         print(f"  SKIPPED {p} ({'loaded with warnings' if check[p] == 'warnings' else 'failed to load'}) - "
               "saving it could lose data; open it in the editor and fix it by hand")
         print_problems(p, problems)
+        note_check(p, "Not resaved (it " + ("loaded with a warning" if check[p] == "warnings" else "failed to load") +
+                   f": {first_problem(p, problems)}). It still works through the redirects. Open it, fix that, "
+                   "and save it.")
     saved = []
     if safe:
         print(f"  resaving {len(safe)} asset(s)...")
@@ -1122,10 +1169,19 @@ def resave_assets(engine_dir: Path, uproject: Path, old_packages: list[str]) -> 
                 saved.append(p)
                 print(f"  saved   {p} (with warnings - worth a look, but it was saved)")
                 print_problems(p, save_problems)
+                note_check(p, f"Saved, but logged: {first_problem(p, save_problems)}. Open it and check it looks right.")
             else:
                 skipped.append(p)
                 print(f"  FAILED  {p} (the save didn't succeed)")
                 print_problems(p, save_problems)
+                note_check(p, f"Couldn't be resaved ({first_problem(p, save_problems, 'the save did not succeed')}). "
+                              "Open it and save it by hand.")
+        # Resaved maps: worth opening and playing, since they now point at the renamed C++ classes.
+        maps = [p for p in saved if is_map(uproject.parent, p)]
+        for p in maps[:6]:
+            note_check(p, "Resaved with the new C++ names. Open it and press Play to check it still works.")
+        if len(maps) > 6:
+            note_check(f"...and {len(maps) - 6} more resaved map(s)", "Open any you rely on and press Play.")
     return saved, skipped
 
 
@@ -1314,6 +1370,8 @@ def verify_plugins(engine_dir: Path, uproject: Path) -> bool:
                   f"{len(warned_assets)} with warnings:")
             for p in warned_assets[:5]:
                 print(f"          {p}: {load_messages.get(p, '')[:180]}")
+                note_check(p, f"Loads with a warning (uses the {name} plugin): "
+                              f"{readable_problem(load_messages.get(p, ''), p)[:180]}. Open it and check it.")
         else:
             print(f"  OK    {name:<{width}}  ({where})  {len(mods)} module(s) loaded, {assets}")
     return all_ok
@@ -1754,6 +1812,26 @@ def after_rename(args, new_uproject: Path) -> int:
     print("\nNext steps:" if todo else "\nAll steps finished.")
     for i, t in enumerate(todo, 1):
         print(f"  {i}. {t}")
+
+    # Last of all: what to confirm in the editor (only when the main work got done).
+    if built or not args.build:
+        action = getattr(args, "action", None)
+        items = list(EDITOR_CHECKS)
+        if action is None:  # a rename
+            items.insert(0, ("The project in Unreal Editor",
+                             "Open it. Blueprints based on the renamed C++ classes should compile with no errors "
+                             "(Window > Message Log), and their values should be intact."))
+        elif action == "upgrade":
+            items.insert(0, ("The project in Unreal Editor",
+                             "Open it in the new engine. Check Window > Message Log for upgrade warnings; assets "
+                             "are converted to the new engine when you save them."))
+        if packaged_ok and args.package:
+            game = out_dir / "Windows" / f"{new_uproject.stem}.exe"
+            items.append((str(game), "The packaged game: " + ("it was started for you. " if args.launch else "start it. ") +
+                          "Check it opens, loads the first level and plays."))
+        for m in default_maps(root):
+            items.append((m, "Your start-up map: open it and press Play to check the game still runs."))
+        print_editor_checks(items)
     return 2 if failed else 0
 
 

@@ -59,7 +59,9 @@ behind the scenes, and runs on the .NET Framework that comes with Windows.
    **Package** or **Upgrade**.
 8. **Wait for it to finish.** A sound plays at the start and the end, and a popup explains
    anything that failed. You can press **Cancel** at any time; nothing is lost. When it's done,
-   **Open folder** opens the project, or the packaged build.
+   **Open folder** opens the project, or the packaged build. The log ends with a **yellow
+   "CHECK IN UNREAL EDITOR" list**: the maps, assets or packaged game to open, and why, so you
+   can confirm everything works.
 
 ## Rename a project
 
@@ -90,7 +92,9 @@ behind the scenes, and runs on the .NET Framework that comes with Windows.
     popup says which step went wrong and whether anything was changed, with a **Save Output
     Log** button. Cancelling never shows this popup.
 11. When it says **"Renamed and built. All steps finished."**, click **Open folder** or open
-    the new `.uproject`, and check the project works. To keep a record of what happened (or
+    the new `.uproject`, and check the project works: the **yellow "CHECK IN UNREAL EDITOR"
+    list** at the end of the log says which assets and maps to open, and why (skipped or
+    warned assets, resaved maps, your start-up map). To keep a record of what happened (or
     to share it when asking for help), click **Save Output Log** and choose where to save it.
 12. **Commit everything in one go**: renamed files, deleted old files, `DefaultEngine.ini`
     and the resaved assets.

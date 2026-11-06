@@ -124,6 +124,13 @@ How it works:
   FAILED; only a save that didn't succeed is FAILED (and keeps the old redirects). Project-wide
   messages logged by whichever asset loads first (`_PROJECT_WIDE_RE`, e.g. GAS "No
   GameplayCueNotifyPaths were specified") don't count against that asset. Found on GD82FP, 6 Nov.
+- **"CHECK IN UNREAL EDITOR" list** (added 6 Nov): the last thing `after_rename` prints (when the build
+  worked), between `=====` lines. Items: rename/upgrade "open the project" advice; `EDITOR_CHECKS`
+  collected via `note_check` (SKIPPED / saved-with-warnings / FAILED assets with their first reason,
+  up to 6 resaved maps, plugin-check WARN assets); the packaged .exe; existing start-up maps
+  (`default_maps`: GameDefaultMap / EditorStartupMap under /Game). The app's log is a RichTextBox
+  so `Append` colours everything from the `CHECK IN UNREAL EDITOR` header (and `=====` lines) in
+  `Theme.Highlight` yellow; Save Output Log writes plain text with CRLF.
 - Remove redirects: only Package/Class/Struct/Enum lines for old modules that no asset
   references any more. Property/Function redirects are **always kept** (Blueprint nodes may
   still store the old member names).
