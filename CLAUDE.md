@@ -10,7 +10,17 @@ and moved here on 4 Nov. Teammates get `UnrealProjectRenamer.exe` + `README.md`
 
 ## Rules (from the user)
 
-1. **Never `git push`**, and commit only when the user asks.
+1. **Push and commit only when the user asks.** Never push on your own.
+   **Every time the user asks to push, bump the version first** (`Program.Version` in
+   `App/RenamerApp.cs`, `major.minor.patch`), judged on everything since the last push
+   (`git log origin/main..HEAD` plus uncommitted changes):
+   - **Major** (X.0.0): only with the user's **approval** — ask first. If they don't
+     approve, bump minor instead.
+   - **Minor** (0.X.0): new features or behaviour changes.
+   - **Patch** (0.0.X): hotfixes.
+   Bumping minor resets patch to 0; bumping major resets both. Then rebuild with
+   `App\build.bat`, commit the bump with the rest, and push. Tell the user the old and new
+   version and why.
 2. This PC runs **SentinelOne**. On 4 Nov it flagged a Claude Code session, killed it and
    rolled back files the session had touched (IT cleared it the same day). The likely
    trigger: copying `cmd.exe` as `UnrealEditor.exe` to fake an open editor. **Never** copy
