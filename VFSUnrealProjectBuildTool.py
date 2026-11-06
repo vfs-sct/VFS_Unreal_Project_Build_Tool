@@ -1006,11 +1006,38 @@ for pkg in job["packages"]:
 _PROBLEM_RE = re.compile(r":\s*(Warning|Error):")
 
 
-def run_in_editor(engine_dir: Path, uproject: Path, mode: str, packages: list[str]) -> dict[str, str]:
+def run_in_editor(engine_dir: Path, uproject: Path, mode: str, packages: list[str],
+                  problems: dict[str, list[str]] | None = None) -> dict[str, str]:
     """Load (mode 'check') or load+save (mode 'save') packages in a headless editor.
-    Returns {package: 'ok' | 'failed' | 'warnings'} - 'warnings' if anything was logged while it loaded."""
+    Returns {package: 'ok' | 'failed' | 'warnings'} - 'warnings' if anything was logged while it loaded.
+    Every problem line logged for a package goes into `problems` (nothing is printed)."""
     lines = run_editor_job(engine_dir, uproject, {"mode": mode, "packages": packages})
-    return parse_package_results(lines, packages)
+    return parse_package_results(lines, packages, quiet=True, all_problems=problems)
+
+
+def readable_problem(line: str, package: str) -> str:
+    """An editor log line, shortened: no timestamp; an "[AssetLog] <path>:" prefix becomes "(in <file>)"
+    when it's about another asset than `package` (warnings often come from assets it loads)."""
+    msg = re.sub(r"^\[[^\]]*\]\[\s*\d+\]", "", line.strip())
+    m = re.search(r"\[AssetLog\] (.*?\.u(?:asset|map)): ", msg)
+    if m:
+        file = Path(m.group(1)).name
+        msg = msg.replace(m.group(0), "")
+        if Path(file).stem != package.rsplit("/", 1)[-1]:
+            msg += f" (in {file})"
+    return msg
+
+
+def print_problems(package: str, problems: dict[str, list[str]], limit: int = 2) -> None:
+    """Up to `limit` distinct reasons for a package, repeats counted, under its SKIPPED/FAILED line."""
+    counts: dict[str, int] = {}
+    for line in problems.get(package, []):
+        text = readable_problem(line, package)
+        counts[text] = counts.get(text, 0) + 1
+    for text, n in list(counts.items())[:limit]:
+        print(f"      why: {text[:220]}{' (x%d)' % n if n > 1 else ''}")
+    if len(counts) > limit:
+        print(f"      ...and {len(counts) - limit} other message(s); open the asset to see them all")
 
 
 def run_editor_job(engine_dir: Path, uproject: Path, job: dict) -> list[str]:
@@ -1033,8 +1060,10 @@ def run_editor_job(engine_dir: Path, uproject: Path, job: dict) -> list[str]:
 
 
 def parse_package_results(lines: list[str], packages: list[str], quiet: bool = False,
-                          messages: dict[str, str] | None = None) -> dict[str, str]:
-    """{package: 'ok' | 'warnings' | 'failed'}; the first problem line per package goes into `messages`."""
+                          messages: dict[str, str] | None = None,
+                          all_problems: dict[str, list[str]] | None = None) -> dict[str, str]:
+    """{package: 'ok' | 'warnings' | 'failed'}; the first problem line per package goes into `messages`,
+    every problem line into `all_problems`."""
     results: dict[str, str] = {}
     current, problems = None, False
     for line in lines:
@@ -1046,6 +1075,8 @@ def parse_package_results(lines: list[str], packages: list[str], quiet: bool = F
             current = None
         elif current and _PROBLEM_RE.search(line):
             problems = True
+            if all_problems is not None:
+                all_problems.setdefault(current, []).append(line)
             if messages is not None and current not in messages:
                 # Keep the readable part: drop the timestamp and the "[AssetLog] <file path>:" prefix.
                 msg = re.sub(r"^\[[^\]]*\]\[\s*\d+\]", "", line.strip())
@@ -1066,16 +1097,19 @@ def resave_assets(engine_dir: Path, uproject: Path, old_packages: list[str]) -> 
         return [], []
     pkgs = sorted(refs)
     print(f"  {len(pkgs)} asset(s) store an old name; checking they load cleanly first...")
-    check = run_in_editor(engine_dir, uproject, "check", pkgs)
+    problems: dict[str, list[str]] = {}
+    check = run_in_editor(engine_dir, uproject, "check", pkgs, problems)
     safe = [p for p in pkgs if check[p] == "ok"]
     skipped = [p for p in pkgs if check[p] != "ok"]
     for p in skipped:
         print(f"  SKIPPED {p} ({'loaded with warnings' if check[p] == 'warnings' else 'failed to load'}) - "
               "saving it could lose data; open it in the editor and fix it by hand")
+        print_problems(p, problems)
     saved = []
     if safe:
         print(f"  resaving {len(safe)} asset(s)...")
-        result = run_in_editor(engine_dir, uproject, "save", safe)
+        save_problems: dict[str, list[str]] = {}
+        result = run_in_editor(engine_dir, uproject, "save", safe, save_problems)
         for p in safe:
             if result[p] == "ok":
                 saved.append(p)
@@ -1083,6 +1117,7 @@ def resave_assets(engine_dir: Path, uproject: Path, old_packages: list[str]) -> 
             else:
                 skipped.append(p)
                 print(f"  FAILED  {p} ({result[p]})")
+                print_problems(p, save_problems)
     return saved, skipped
 
 
@@ -1171,7 +1206,10 @@ def plugins_in_use(root: Path, uproject: Path, engine_dir: Path) -> dict[str, tu
             try:
                 for m in json.loads(read_text(path)[0]).get("Modules", []):
                     allow, deny = m.get("PlatformAllowList") or m.get("WhitelistPlatforms"), m.get("PlatformDenyList") or []
-                    if m.get("Type") in _EDITOR_MODULE_TYPES and (not allow or plat in allow) and plat not in deny:
+                    # LoadingPhase "None" modules are never loaded automatically (the plugin loads them itself
+                    # when needed, e.g. Streamline's D3D RHI modules), so they aren't expected to be loaded.
+                    if m.get("Type") in _EDITOR_MODULE_TYPES and (not allow or plat in allow) and plat not in deny \
+                            and m.get("LoadingPhase") != "None":
                         modules.append(m["Name"])
             except (json.JSONDecodeError, OSError, KeyError):
                 pass
@@ -1180,15 +1218,14 @@ def plugins_in_use(root: Path, uproject: Path, engine_dir: Path) -> dict[str, tu
 
 
 def plugin_has_content(uplugin: Path | None) -> bool:
-    """True when the plugin can hold content (so Unreal mounts it): CanContainContent, or a Content folder."""
+    """True when Unreal mounts the plugin's content: only when its .uplugin says CanContainContent: true.
+    (A Content folder alone doesn't count - GameplayAbilities has one but sets CanContainContent false.)"""
     if uplugin is None:
         return False
     try:
-        if json.loads(read_text(uplugin)[0]).get("CanContainContent"):
-            return True
+        return bool(json.loads(read_text(uplugin)[0]).get("CanContainContent"))
     except (json.JSONDecodeError, OSError, TypeError):
-        pass
-    return (uplugin.parent / "Content").is_dir()
+        return False
 
 
 def verify_plugins(engine_dir: Path, uproject: Path) -> bool:

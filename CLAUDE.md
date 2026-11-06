@@ -117,16 +117,20 @@ How it works:
   Header scanning blanks comments, skips strings, handles parens in meta, bit fields.
 - Resave: scans `.uasset/.umap` bytes for `/Script/<OldModule>`, loads each in a headless
   editor first and **only saves assets that load with no warnings** (others are skipped so
-  nothing is saved broken), then saves.
+  nothing is saved broken), then saves. Each SKIPPED / FAILED asset gets up to two "why:" lines
+  (`print_problems` / `readable_problem`: timestamp stripped, repeats counted, "(in X.uasset)" when
+  the warning comes from another asset it loads); the raw editor lines are no longer printed.
 - Remove redirects: only Package/Class/Struct/Enum lines for old modules that no asset
   references any more. Property/Function redirects are **always kept** (Blueprint nodes may
   still store the old member names).
 - Verify plugins: every enabled plugin (from .uproject + project `Plugins/`) must be enabled,
-  mounted **if it can hold content** (`CanContainContent` or a `Content/` folder;
-  code-only plugins never mount), its editor-loadable modules loaded (`/Script/<Module>`
-  exists, **or** `UnrealEditor-<Module>[-Win64-DebugGame].dll` is loaded, for modules with no
-  UObjects), and assets using it must load. Reports OK / WARN (loads with warnings) / FAIL.
-  Fixed 6 Nov: before, healthy code-only plugins failed both checks.
+  mounted **only if its .uplugin says `CanContainContent: true`** (a Content folder alone doesn't
+  count: GameplayAbilities has one but sets it false), its editor-loadable modules loaded
+  (`/Script/<Module>` exists, **or** `UnrealEditor-<Module>[-Win64-DebugGame].dll` is loaded, for
+  modules with no UObjects; modules with `LoadingPhase: None` are skipped, the plugin loads them
+  itself, e.g. Streamline's D3D RHI modules), and assets using it must load. Reports OK / WARN
+  (loads with warnings) / FAIL. Fixed 6 Nov: healthy code-only plugins failed both checks; then, on
+  a real project (GD82FP), GameplayAbilities and StreamlineCore were false FAILs.
 
 ## GUI (`VFSUnrealProjectBuildTool.exe`) — current behaviour and user's choices
 
