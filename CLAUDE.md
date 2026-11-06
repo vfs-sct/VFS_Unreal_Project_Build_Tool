@@ -1,11 +1,15 @@
-# CLAUDE.md — Unreal Project Renamer
+# CLAUDE.md — VFSUnrealProjectBuildTool (formerly Unreal Project Renamer)
 
 Notes for the next Claude Code session working on this tool. Written 4 Nov 2026.
 
 **Location:** `C:\Users\Public\Repos\VFS_Unreal_Project_Renamer`, a clone of
 github.com/vfs-sct/VFS_Unreal_Project_Renamer (shared with the user's team). It was
 developed in `C:\Users\skearney\Documents\Unreal Projects\Claude\Tools\UnrealProjectRenamer`
-and moved here on 4 Nov. Teammates get `UnrealProjectRenamer.exe` + `README.md`
+and moved here on 4 Nov. Renamed to **VFSUnrealProjectBuildTool** on 6 Nov (file names; the
+display name in the window title, file properties and README heading is "VFS Unreal Project Build
+Tool", title "VFS Unreal Project Build Tool v<version>"), including the script (was
+`rename_unreal_project.py`). The repo, the `App/RenamerApp.*` files and the C# namespace keep their old
+names). Teammates get `VFSUnrealProjectBuildTool.exe` + `README.md`
 (user-facing guide); this file is for developers.
 
 ## Rules (from the user)
@@ -41,16 +45,15 @@ plugins (incl. FMOD).
 
 | File | Purpose |
 |---|---|
-| `rename_unreal_project.py` | All rename logic (CLI). Single source of truth. |
+| `VFSUnrealProjectBuildTool.py` | All rename/build/package logic (CLI). Single source of truth. Was `rename_unreal_project.py`; the redirect clean-up still recognises the old `; Added by rename_unreal_project.py` comment in projects renamed before. |
 | `App/RenamerApp.cs` | Windows GUI (WinForms, .NET Framework 4.8, C# 7.3). |
 | `App/build.bat` | Compiles the GUI with Visual Studio's Roslyn `csc.exe`, embedding the .py as a resource. |
-| `UnrealProjectRenamer.exe` | Built GUI (~95 KB). Unsigned. |
-| `RenameUnrealProject.bat` | Runs the .py with system Python or Unreal's bundled Python. |
+| `VFSUnrealProjectBuildTool.exe` | Built GUI (~150 KB). Unsigned. |
 | `screenshot.png` | Latest screenshot of the GUI. |
 
 There is no system Python on this PC; use Unreal's:
 `C:\Program Files\Epic Games\UE_5.8\Engine\Binaries\ThirdParty\Python3\Win64\python.exe`.
-The GUI extracts the embedded script to `%TEMP%\UnrealProjectRenamer\rename_<guid>.py`
+The GUI extracts the embedded script to `%TEMP%\VFSUnrealProjectBuildTool\rename_<guid>.py`
 (unique per run, deleted afterwards) and runs it with `-u -I`.
 
 **After editing the .py or .cs, rebuild with `App\build.bat`** (the .exe embeds the .py).
@@ -62,12 +65,13 @@ and the U is still white. Every size is a PNG frame. The window reuses the .exe'
 References: System.Windows.Forms, System.Drawing, System.Web.Extensions (JSON),
 System.Management (WMI).
 
-## Script (`rename_unreal_project.py`) — CLI
+## Script (`VFSUnrealProjectBuildTool.py`) — CLI
 
-`rename_unreal_project.py <.uproject or folder> <NewName> [options]`
+`VFSUnrealProjectBuildTool.py <.uproject or folder> <NewName> [options]`, or
+`VFSUnrealProjectBuildTool.py <.uproject or folder> --action build|rebuild|package [options]`
 
 - Default: makes a renamed **copy** (`-o` to choose the folder). `--in-place` renames where
-  it is (deletes Binaries/Intermediate/.sln, renames the folder unless `--keep-folder-name`).
+  it is (deletes every root `.sln`/`.slnx`/`.code-workspace` first, then Binaries, Intermediate, `.vs` and `.idea`, via `delete_paths`: clears read-only flags, carries on past locked files and prints a warning for each leftover instead of crashing; renames the folder unless `--keep-folder-name`).
 - `--dry-run`, `--yes`, `--engine-association 5.8`
 - Follow-ups: `--generate-project-files`, `--build`, `--resave-assets`,
   `--remove-unused-redirects`, `--verify-plugins`, `--open-editor`
@@ -124,7 +128,7 @@ How it works:
   UObjects), and assets using it must load. Reports OK / WARN (loads with warnings) / FAIL.
   Fixed 6 Nov: before, healthy code-only plugins failed both checks.
 
-## GUI (`UnrealProjectRenamer.exe`) — current behaviour and user's choices
+## GUI (`VFSUnrealProjectBuildTool.exe`) — current behaviour and user's choices
 
 The user asked for these specifically — keep them:
 - **Dark theme only** (Claude-app colours, orange accent), no theme picker. Custom-drawn
@@ -133,11 +137,60 @@ The user asked for these specifically — keep them:
   options in the UI.
 - **Always runs every follow-up step**: generate project files, build, resave assets,
   remove unused redirects (on), verify plugins. No checkboxes for these.
-- Only option left: **"Open in Unreal Editor when done"**, default **on** (changed 6 Nov at the user's request).
+- **Action** dropdown at the top (`actionBox`, `enum Act`, added 6 Nov): **Build Solution
+  (default)**, Package Build, Rename Project. (Rebuild Solution was an action until 6 Nov; it's now
+  the **Rebuild Solution** checkbox under Action, `rebuildBox`, unticked by default, shown for Build
+  Solution and Package Build — a rename always builds from scratch.) `ActionChanged` shows New name
+  and Preview changes only for Rename, relabels the main button (Build — "Rebuild" when ticked —
+  / Package / Rename) and swaps the On Finish Success list. Engine version and Visual Studio show
+  for every action. Non-rename actions run the script with `--action build|package
+  [--rebuild] --generate-project-files --build` (`run_action`: optional engine switch with the
+  downgrade check, then `after_rename`'s steps; no resave/redirect/plugin steps); `--rebuild` adds
+  UBT `-Rebuild` (what Rebuild.bat does) and, when packaging, UAT `-clean`. (`--action rebuild`
+  still works on the command line.) They're
+  cancellable at any time without a question; `FinishedAction` / `ActionFailureMessage` handle the
+  end ("Build failed" popup etc.). The "project is open" check runs for every action.
+- **"On Finish Success"** dropdown (labelled "When done" until 6 Nov) (`whenDoneBox`; replaced the "Open in Unreal Editor when done"
+  checkbox on 6 Nov). Rename / Build: Do nothing; Open in Unreal Editor when done
+  (**default**). Package Build: Do nothing; Open in Unreal Editor when done; **Launch .exe
+  (default)** — only these three (the user cut the cook/package variants on 6 Nov). Package Build
+  always packages the **Build** field's configuration (`buildConfigBox` under Action, Package Build
+  only, Development (default) / Shipping). Under it, the **Clean cook content** checkbox
+  (`cookContentBox`, Package Build only, **unticked by default**): ticked = clean cook
+  (`--clean-cook`), unticked = incremental cook (UAT `-cookincremental`); content is cooked either way.
+  Thin separator lines (`AddSeparator`) sit under Project, under the Action group, above and under
+  On Finish Success, and under the button row. The buttons start at the left edge, in line with the
+  field labels, centred between their two lines. All text boxes and dropdowns are as tall as the
+  buttons (`MatchFieldHeights`: text boxes sit in `Frame` panels, dropdowns in `Host` panels, because
+  the table never re-measures a combo grown through ItemHeight and combos ignore MinimumSize).
+- **Remembered inputs, per action** (added 6 Nov): `%APPDATA%\VFSUnrealProjectBuildTool\settings.json`
+  holds `LastAction` and, for each action, Project, NewName, Engine, VisualStudio (install path),
+  OnFinishSuccess, Rebuild, Build, CleanCook, BuildLocation. `ActionChanged` saves the action being
+  left and restores the new one (`SaveFields` / `RestoreFields`); also saved on closing and when a run
+  starts; the app opens on the last action (`LoadSettings`). A saved engine that would now be a
+  downgrade, or a VS that's gone, is skipped. Not tested yet.
+  Rebuild Solution and Clean cook content have hover tooltips explaining them
+  (`Theme.DarkToolTip`: owner-drawn in the dark theme, wrapped at 360 px, 30 s display). `WhenDoneArgs` → `--package <config>
+  [--clean-cook]` (+ `--open-editor` or `--launch`). The script still supports `--cook` (cook
+  only); the app no longer offers it. `--clean-cook` deletes `Saved/Cooked` and does a full cook; `--launch` (starts
+  `<dir>/Windows/<Project>.exe` detached; Cancel is disabled from "Launching" on, since killing the
+  process tree would close the game). The output folder is the **Build location** row in the
+  Action group (`buildLocationBox` + Browse via the `AskFolder` hook, Package Build only; filled
+  with `<project>\Packaged` when a project is picked unless the user changed it; empty blocks
+  Package), passed as `--package-dir`; Open folder then opens the build. (Until 6 Nov a folder
+  picker popped up on clicking Package instead.) Script: `cook_and_package` runs `RunUAT.bat BuildCookRun -platform=Win64 -cook
+  -nocompileeditor [-clientconfig -build -stage -pak -archive -archivedirectory]` after the build
+  (and the rename's checks), only if the editor build succeeded; prints `  Packaged: <dir>` /
+  `  Cooked: <dir>` or `  cook FAILED` / `  packaging FAILED`. The game build uses UBT's default
+  compiler (no `-Compiler`/`-CompilerVersion` passed through).
+  **None of the Action / On Finish Success / cook / package / launch work is tested yet** (the user asked
+  to hold testing until they've sent all their changes). Test plan: Build, Build with Rebuild ticked, Package (with and without Rebuild)
+  Development and Shipping (each finish choice, especially Launch .exe), engine switch on a build
+  action, Cancel during a cook, failure popups, the folder picker's cancel.
 - **New name** is capped at 20 characters (`MaxLength`) and shows a grey "Maximum 20 characters"
   hint while empty (`EM_SETCUEBANNER`; needs visual styles, which `Main` enables). While a preview or rename runs,
   `SetInputsLocked` greys out Project, Browse, New name, Engine version, Visual Studio and
-  the Open-in-editor box, and ignores dropped projects (added 6 Nov, tested in-process).
+  the On Finish Success dropdown, and ignores dropped projects (added 6 Nov, tested in-process).
 - **Sounds** (`Sfx`, added 6 Nov): synthesized in code as in-memory .wav (no sound files),
   played with `SoundPlayer` through the `MainForm.PlaySound` hook. Start = real rename begins
   (not Preview, not the common-name re-run); Success = "Renamed and built"; Failure = not

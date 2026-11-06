@@ -1,12 +1,12 @@
-# Unreal Project Renamer
+# VFS Unreal Project Build Tool
 
-Renames an Unreal Engine **C++ project** safely, without breaking your Blueprints, levels
-or saved values, and then rebuilds it so it's ready to open.
+Builds, rebuilds and packages Unreal Engine **C++ projects** without opening the editor, and
+renames them safely, without breaking your Blueprints, levels or saved values.
 
 Renaming a C++ project by hand means renaming the `.uproject`, the modules, the
 `*.Target.cs` / `*.Build.cs` files, the `MYGAME_API` macros, config entries and class
 names. Then you have to stop every Blueprint and level that points at the old C++ names
-from breaking. This tool does all of that for you, and checks the result.
+from breaking. **Rename Project** does all of that for you, and checks the result.
 
 ---
 
@@ -17,21 +17,46 @@ from breaking. This tool does all of that for you, and checks the result.
 - **Visual Studio 2022 or 2026** (depending on Unreal version) with the **"Game development with C++"** workload
   (this includes the C++ compiler and a Windows SDK)
 
-There's nothing to install and nothing to build: **`UnrealProjectRenamer.exe` is all you
-need** (this README is optional). It contains everything else, uses Unreal's own Python
+There's nothing to install and nothing to build: **`VFSUnrealProjectBuildTool.exe` is all
+you need** (this README is optional). It contains everything else, uses Unreal's own Python
 behind the scenes, and runs on the .NET Framework that comes with Windows.
 
-## How to use it
+## Build, rebuild or package
+
+1. **Close the project** in Unreal Editor, Visual Studio and Rider. The tool checks this
+   and won't start while the project is open.
+2. Double-click **`VFSUnrealProjectBuildTool.exe`**.
+   Windows may warn about an unrecognised app, because the .exe isn't signed. Choose
+   **More info → Run anyway**.
+3. **Project (.uproject):** click **Browse...** and pick the project's `.uproject`, or drag
+   the `.uproject` (or its folder) onto the window.
+4. **Action:** pick **Build Solution** (the default) or **Package Build**. Tick **Rebuild
+   Solution** under it to clean and then build everything (slower; use it when a normal
+   build acts up). For Package Build, also pick the **Build**
+   configuration: **Development** (the default) or **Shipping**. Content is always cooked;
+   by default only what changed is recooked (faster). Tick **Clean cook content** to delete
+   old cooked data and cook everything from scratch (slower, safest, e.g. after a rename).
+   **Build location** is where the packaged game is saved. It's filled in with the project's
+   `Packaged` folder; click **Browse...** to choose another.
+5. **Engine version** and **Visual Studio:** leave them as they are, or pick a newer engine
+   to upgrade the project before building (an older one is blocked).
+6. **On Finish Success:** what happens once it worked: **Do nothing**, or **Open in Unreal
+   Editor when done** (the default for Build Solution). Package Build adds **Launch .exe**
+   (its default), which starts the packaged game. Package Build keeps the editor closed.
+7. Click **Build** (it reads **Rebuild** when Rebuild Solution is ticked) or **Package**.
+8. **Wait for it to finish.** A sound plays at the start and the end, and a popup explains
+   anything that failed. You can press **Cancel** at any time; nothing is lost. When it's done,
+   **Open folder** opens the project, or the packaged build.
+
+## Rename a project
 
 1. **Commit or back up the project.** The rename changes files in place. Do the rename on
    **one machine** only; your teammates pick it up from the commit (step 13).
 2. **Close the project** in Unreal Editor, Visual Studio and Rider. The tool checks this
    and won't start while the project is open.
-3. Double-click **`UnrealProjectRenamer.exe`**.
-   Windows may warn about an unrecognised app, because the .exe isn't signed. Choose
-   **More info → Run anyway**.
+3. Double-click **`VFSUnrealProjectBuildTool.exe`**.
 4. **Project (.uproject):** click **Browse...** and pick the project's `.uproject`, or drag
-   the `.uproject` (or its folder) onto the window.
+   the `.uproject` (or its folder) onto the window. Then set **Action** to **Rename Project**.
 5. **New name:** type the new project name. It must start with a letter and use only
    letters, digits and underscores, for example `SpaceRacer` or `Project_X2`. It can be
    up to 20 characters long (Unreal's recommended limit).
@@ -40,8 +65,7 @@ behind the scenes, and runs on the .NET Framework that comes with Windows.
    (see [Messages you might see](#messages-you-might-see)).
 7. **Visual Studio:** the newest Visual Studio that works with the chosen engine is picked
    for you. Change it only if you need a specific version.
-8. **Open in Unreal Editor when done** is ticked by default. Untick it if you don't want the
-   editor to open afterwards.
+8. **On Finish Success:** **Open in Unreal Editor when done** (the default) or **Do nothing**.
 9. Click **Preview changes**. This changes nothing. It lists every file that will be
    renamed or edited, the redirects that will be added, and any warnings. Read it.
 10. Click **Rename** and confirm.
@@ -75,7 +99,7 @@ behind the scenes, and runs on the .NET Framework that comes with Windows.
 | The old name inside source code, `*.Build.cs`, `*.Target.cs`, `Config/*.ini`, `MYGAME_API` macros | Engine and plugin names that happen to contain the old name |
 | Your project's plugins that **use** the game's code (their references to it) | Those plugins' own names and files |
 | The root `README` | Web links (a GitHub URL with the old name keeps working) |
-| `Binaries/`, `Intermediate/` and the `.sln` are deleted, then rebuilt | Anything else outside `Source/`, `Config/`, plugins and the root README |
+| `Binaries/`, `Intermediate/`, the old `.sln` / `.slnx` files and the `.vs` / `.idea` caches are deleted; the build files are made again | Anything else outside `Source/`, `Config/`, plugins and the root README |
 
 After renaming, it automatically:
 

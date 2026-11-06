@@ -1,4 +1,4 @@
-// Unreal Project Renamer - Windows GUI for rename_unreal_project.py.
+// VFSUnrealProjectBuildTool - Windows GUI for VFSUnrealProjectBuildTool.py (build, rebuild, package or rename).
 //
 // The Python script is embedded in this .exe and run with the Python that ships
 // with every Unreal Engine install, so the rename logic lives in one place.
@@ -18,8 +18,8 @@ using System.Windows.Forms;
 using Microsoft.Win32;
 
 // Shown in the .exe's Properties > Details. The number itself is Program.Version.
-[assembly: AssemblyTitle("Unreal Project Renamer")]
-[assembly: AssemblyProduct("Unreal Project Renamer")]
+[assembly: AssemblyTitle("VFS Unreal Project Build Tool")]
+[assembly: AssemblyProduct("VFS Unreal Project Build Tool")]
 [assembly: AssemblyVersion(UnrealProjectRenamer.Program.Version + ".0")]
 [assembly: AssemblyFileVersion(UnrealProjectRenamer.Program.Version + ".0")]
 [assembly: AssemblyInformationalVersion(UnrealProjectRenamer.Program.Version)]
@@ -29,7 +29,7 @@ namespace UnrealProjectRenamer
     static class Program
     {
         // App version: bump this for every build you hand out (major.minor.patch).
-        public const string Version = "0.11.0";
+        public const string Version = "0.12.0";
 
         [DllImport("user32.dll")]
         static extern bool SetProcessDPIAware();
@@ -422,6 +422,29 @@ namespace UnrealProjectRenamer
             if (combo != null) StyleCombo(combo);
         }
 
+        /// <summary>A tooltip drawn in the dark theme, wrapped to a readable width, that stays up long enough to read.</summary>
+        public static ToolTip DarkToolTip()
+        {
+            const int maxWidth = 360, pad = 8;
+            var flags = TextFormatFlags.WordBreak | TextFormatFlags.Left | TextFormatFlags.NoPrefix;
+            var font = new Font("Segoe UI", 9f);
+            var tip = new ToolTip { OwnerDraw = true, InitialDelay = 400, AutoPopDelay = 30000, ReshowDelay = 200 };
+            tip.Popup += (s, e) =>
+            {
+                var text = tip.GetToolTip(e.AssociatedControl);
+                var size = TextRenderer.MeasureText(text, font, new Size(maxWidth, 0), flags);
+                e.ToolTipSize = new Size(size.Width + pad * 2, size.Height + pad * 2);
+            };
+            tip.Draw += (s, e) =>
+            {
+                using (var bg = new SolidBrush(Raised)) e.Graphics.FillRectangle(bg, e.Bounds);
+                using (var edge = new Pen(Border)) e.Graphics.DrawRectangle(edge, 0, 0, e.Bounds.Width - 1, e.Bounds.Height - 1);
+                var area = new Rectangle(pad, pad, e.Bounds.Width - pad * 2, e.Bounds.Height - pad * 2);
+                TextRenderer.DrawText(e.Graphics, e.ToolTipText, font, area, Text, flags);
+            };
+            return tip;
+        }
+
         public static void StyleButton(Button b, bool primary)
         {
             b.FlatStyle = FlatStyle.Flat;
@@ -680,7 +703,41 @@ namespace UnrealProjectRenamer
         readonly Label engineNote = new Label { AutoSize = true, ForeColor = Theme.Warn };
         readonly ComboBox vsBox = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList };
         readonly Label vsNote = new Label { AutoSize = true, ForeColor = Theme.Warn, MaximumSize = new Size(700, 0) };
-        readonly CheckBox openEditor = new DarkCheck { Text = "Open in Unreal Editor when done", AutoSize = true, Checked = true };
+        // What the app does. Order is the order in the Action dropdown; Build Solution is the default.
+        enum Act { Build, Package, Rename }
+        static readonly string[] ActionNames = { "Build Solution", "Package Build", "Rename Project" };
+        static readonly string[] ActionVerbs = { "Build", "Package", "Rename" };
+        readonly ComboBox actionBox = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList };
+        Label nameLabel;
+        Act runAction;              // the action of the run in progress (or the last one)
+        bool runRebuild;            // whether that run was a rebuild
+        // Build Solution and Package Build: clean, then build everything (Unreal's Rebuild). Off by default.
+        readonly CheckBox rebuildBox = new DarkCheck { Text = "Rebuild Solution", AutoSize = true, Checked = false };
+
+        // "On Finish Success" choices (see WhenDoneArgs).
+        const string DoNothing = "Do nothing";
+        const string OpenEditor = "Open in Unreal Editor when done";
+        const string LaunchExe = "Launch .exe";
+        static readonly string[] BasicWhenDone = { DoNothing, OpenEditor };
+        static readonly string[] PackageWhenDone = { DoNothing, OpenEditor, LaunchExe };
+        const int PackageWhenDoneDefault = 2; // Launch .exe
+        readonly ComboBox whenDoneBox = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList };
+
+        // Build field (Package Build only): which configuration to package. Development is the default.
+        static readonly string[] BuildConfigs = { "Development", "Shipping" };
+        readonly ComboBox buildConfigBox = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList };
+        Label buildConfigLabel;
+        // Package Build only: where the packaged game goes. Filled with <project>\Packaged when a project is picked.
+        readonly TextBox buildLocationBox = new TextBox();
+        readonly Button buildLocationBrowse = new Button { Text = "Browse...", AutoSize = true };
+        Label buildLocationLabel;
+        string autoBuildLocation;   // the location last filled in automatically (replaced when the project changes)
+        // Package Build only: ticked = clean cook (delete old cooked data, cook everything);
+        // unticked = only recook what changed.
+        readonly CheckBox cookContentBox = new DarkCheck { Text = "Clean cook content", AutoSize = true, Checked = false };
+        readonly List<Panel> separators = new List<Panel>(); // thin lines between groups of fields
+        string packageDir;          // where this rename's packaged build goes (asked when Rename is clicked)
+        string packagedFolder;      // set after a successful package, for Open folder
         readonly Button previewButton = new Button { Text = "Preview changes", AutoSize = true };
         readonly Button renameButton = new Button { Text = "Rename", AutoSize = true };
         readonly Button cancelButton = new Button { Text = "Cancel", AutoSize = true, Visible = false };
@@ -715,7 +772,7 @@ namespace UnrealProjectRenamer
 
         public MainForm()
         {
-            Text = "Unreal Project Renamer  v" + Program.Version;
+            Text = "VFS Unreal Project Build Tool v" + Program.Version;
             Font = new Font("Segoe UI", 9f);
             AutoScaleMode = AutoScaleMode.Dpi;
             MinimumSize = new Size(760, 680);
@@ -729,36 +786,68 @@ namespace UnrealProjectRenamer
             grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
             grid.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
 
-            projectBox.Dock = DockStyle.Fill;
-            AddRow(grid, "Project (.uproject)", projectBox, projectBrowse);
+            AddRow(grid, "Project (.uproject)", Frame(projectBox), projectBrowse);
+            AddSeparator(grid);
 
-            nameBox.Dock = DockStyle.Fill;
+            actionBox.Items.AddRange(ActionNames);
+            actionBox.SelectedIndex = (int)Act.Build;
+            actionBox.Width = 260;
+            actionBox.Margin = new Padding(3);
+            AddRow(grid, "Action", Host(actionBox), null);
+            rebuildBox.Margin = new Padding(3, 6, 3, 6);
+            AddRow(grid, "", rebuildBox, null);
+
+            buildConfigBox.Items.AddRange(BuildConfigs);
+            buildConfigBox.SelectedIndex = 0; // Development
+            buildConfigBox.Width = 260;
+            buildConfigBox.Margin = new Padding(3);
+            buildConfigLabel = AddRow(grid, "Build", Host(buildConfigBox), null);
+            cookContentBox.Margin = new Padding(3, 6, 3, 6);
+            AddRow(grid, "", cookContentBox, null);
+            buildLocationLabel = AddRow(grid, "Build location", Frame(buildLocationBox), buildLocationBrowse);
+
+            // New name belongs to Rename Project, so it sits in the Action group.
             // Grey hint shown while the box is empty (also while it has focus).
             nameBox.HandleCreated += (s, e) => SendMessage(nameBox.Handle, EM_SETCUEBANNER, (IntPtr)1, "Maximum 20 characters");
-            AddRow(grid, "New name", nameBox, null);
+            nameLabel = AddRow(grid, "New name", Frame(nameBox), null);
 
-            var enginePanel = new FlowLayoutPanel { AutoSize = true, Margin = new Padding(0), WrapContents = false };
+            // A thin line under the Action group (Action, plus Rebuild Solution / Build / Clean cook content /
+            // New name, depending on the action).
+            AddSeparator(grid);
+
+            var enginePanel = new FlowLayoutPanel { AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, Margin = new Padding(0), WrapContents = false };
             engineBox.Width = 260;
-            enginePanel.Controls.Add(engineBox);
+            enginePanel.Controls.Add(Host(engineBox));
             engineNote.Margin = new Padding(8, 6, 0, 0);
             enginePanel.Controls.Add(engineNote);
             AddRow(grid, "Engine version", enginePanel, null);
 
             vsBox.Width = 360;
-            vsBox.Margin = new Padding(3, 3, 3, 6);
-            AddRow(grid, "Visual Studio", vsBox, null);
+            vsBox.Margin = new Padding(3);
+            AddRow(grid, "Visual Studio", Host(vsBox), null);
             vsNote.Margin = new Padding(3, 0, 3, 6);
             AddRow(grid, "", vsNote, null);
 
-            AddRow(grid, "", openEditor, null);
+            // And one above On Finish Success.
+            AddSeparator(grid);
 
-            var buttons = new FlowLayoutPanel { AutoSize = true, Margin = new Padding(0, 8, 0, 8), WrapContents = false };
-            buttons.Controls.Add(previewButton);
-            buttons.Controls.Add(renameButton);
-            buttons.Controls.Add(cancelButton);
-            buttons.Controls.Add(openButton);
-            buttons.Controls.Add(saveLogButton);
-            AddRow(grid, "", buttons, null);
+            whenDoneBox.Width = 520;
+            whenDoneBox.Margin = new Padding(3);
+            AddRow(grid, "On Finish Success", Host(whenDoneBox), null);
+            AddSeparator(grid);
+
+            // Buttons start at the left edge, in line with the field labels, with a line under them.
+            var buttons = new FlowLayoutPanel { AutoSize = true, Margin = new Padding(0, 0, 0, 4), WrapContents = false };
+            foreach (var b in new[] { previewButton, renameButton, cancelButton, openButton, saveLogButton })
+            {
+                b.Margin = new Padding(0, 3, 6, 3);
+                buttons.Controls.Add(b);
+            }
+            int buttonRow = grid.RowCount++;
+            grid.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            grid.Controls.Add(buttons, 0, buttonRow);
+            grid.SetColumnSpan(buttons, 3);
+            AddSeparator(grid);
 
             log.Multiline = true;
             log.ReadOnly = true;
@@ -779,16 +868,45 @@ namespace UnrealProjectRenamer
             Controls.Add(grid);
 
             projectBrowse.Click += (s, e) => BrowseProject();
+            buildLocationBrowse.Click += (s, e) =>
+            {
+                var start = buildLocationBox.Text.Trim().Length > 0 ? buildLocationBox.Text.Trim()
+                          : File.Exists(ProjectPath) ? Path.GetDirectoryName(ProjectPath) : "";
+                var folder = AskFolder(this, "Choose where to save the packaged build", start);
+                if (folder != null) buildLocationBox.Text = folder;
+            };
+            buildLocationBox.TextChanged += (s, e) => UpdateState();
             projectBox.TextChanged += (s, e) => ProjectChanged();
             nameBox.TextChanged += (s, e) => UpdateState();
             engineBox.SelectedIndexChanged += (s, e) => EngineChanged();
             vsBox.SelectedIndexChanged += (s, e) => UpdateState();
             previewButton.Click += (s, e) => Run(true);
-            renameButton.Click += (s, e) => ConfirmAndRename();
+            renameButton.Click += (s, e) => StartAction();
+            actionBox.SelectedIndexChanged += (s, e) => ActionChanged();
+            rebuildBox.CheckedChanged += (s, e) => { UpdateMainButtonText(); UpdateState(); };
+
+            // Hover help for the two checkboxes.
+            var tips = Theme.DarkToolTip();
+            FormClosed += (s, e) => tips.Dispose();
+            tips.SetToolTip(rebuildBox,
+                "Deletes the project's compiled code, then compiles everything from scratch.\n\n" +
+                "Slower than a normal build. Use it when a build gives strange errors, or changes " +
+                "to your C++ don't seem to take effect. With Package Build, the packaged game's " +
+                "code is rebuilt from scratch too.");
+            tips.SetToolTip(cookContentBox,
+                "Deletes the old cooked content, then cooks every asset from scratch before packaging.\n\n" +
+                "Slower. When off, only assets that changed since the last cook are recooked " +
+                "(faster). Turn it on if the packaged game shows old or missing content, or " +
+                "after renaming the project.");
             cancelButton.Click += (s, e) => CancelRun();
             saveLogButton.Click += (s, e) => SaveLog();
             log.TextChanged += (s, e) => UpdateSaveLogButton();
-            openButton.Click += (s, e) => { if (lastResultFolder != null && Directory.Exists(lastResultFolder)) Process.Start("explorer.exe", "\"" + lastResultFolder + "\""); };
+            openButton.Click += (s, e) =>
+            {
+                // After packaging, open the packaged build; otherwise the project.
+                var folder = packagedFolder != null && Directory.Exists(packagedFolder) ? packagedFolder : lastResultFolder;
+                if (folder != null && Directory.Exists(folder)) Process.Start("explorer.exe", "\"" + folder + "\"");
+            };
             DragEnter += (s, e) => { if (DroppedProject(e) != null) e.Effect = DragDropEffects.Copy; };
             DragDrop += (s, e) => { var p = DroppedProject(e); if (p != null && projectBox.Enabled) projectBox.Text = p; };
             FormClosing += (s, e) =>
@@ -800,7 +918,8 @@ namespace UnrealProjectRenamer
                         "Stopping at this point could leave the project half-changed.");
                     e.Cancel = true;
                 }
-                else if (DarkDialog.Ask(this, Text, "A rename is still running. Stop it and close?", true, "Stop and close", "Keep running"))
+                else if (DarkDialog.Ask(this, Text, "A " + Verb(runAction, runRebuild).ToLower() + " is still running. Stop it and close?",
+                                        true, "Stop and close", "Keep running"))
                 {
                     cancelled = true; // stopped by the user: no failure sound or popup
                     KillRun();
@@ -810,13 +929,22 @@ namespace UnrealProjectRenamer
             };
 
             // Names double as UI Automation ids (used by accessibility tools and tests).
-            projectBox.Name = "projectBox"; nameBox.Name = "nameBox";
-            engineBox.Name = "engineBox"; vsBox.Name = "vsBox"; openEditor.Name = "openEditor"; log.Name = "log"; status.Name = "status";
+            projectBox.Name = "projectBox"; nameBox.Name = "nameBox"; actionBox.Name = "actionBox"; buildConfigBox.Name = "buildConfigBox"; cookContentBox.Name = "cookContentBox"; rebuildBox.Name = "rebuildBox";
+            engineBox.Name = "engineBox"; vsBox.Name = "vsBox"; whenDoneBox.Name = "whenDoneBox"; log.Name = "log"; status.Name = "status";
             previewButton.Name = "previewButton"; renameButton.Name = "renameButton"; openButton.Name = "openButton";
             cancelButton.Name = "cancelButton"; vsNote.Name = "vsNote"; saveLogButton.Name = "saveLogButton";
 
             Theme.Apply(this);
             Theme.StyleButton(renameButton, true);
+            foreach (var line in separators) line.BackColor = Theme.Border; // after Apply, which paints panels with the background
+            foreach (var f in frames)
+            {
+                f.BackColor = Theme.Surface;                       // Apply painted it like the window
+                ((TextBox)f.Controls[0]).BorderStyle = BorderStyle.None; // the frame draws the border
+            }
+            // Fields and dropdowns as tall as the buttons, once the real (DPI-scaled) sizes are known.
+            Load += (s, e) => MatchFieldHeights();
+            Shown += (s, e) => MatchFieldHeights();
             status.ForeColor = Theme.Muted;
             HandleCreated += (s, e) => Theme.DarkTitleBar(Handle);
 
@@ -825,18 +953,237 @@ namespace UnrealProjectRenamer
             FillEngines();
             FillVisualStudios();
             PickDefaultVisualStudio();
+            ActionChanged(); // fills On Finish Success, shows the right fields, updates the state
+            LoadSettings();  // last-used action and each action's last inputs
+            FormClosed += (s, e) => SaveFields(CurrentAction);
+        }
+
+        Act CurrentAction { get { return (Act)Math.Max(0, actionBox.SelectedIndex); } }
+
+        bool Rebuilding { get { return rebuildBox.Checked && CurrentAction != Act.Rename; } }
+
+        /// <summary>Verb for an action, e.g. "Build", "Rebuild", "Package", "Rename".</summary>
+        static string Verb(Act act, bool rebuild) { return act == Act.Build && rebuild ? "Rebuild" : ActionVerbs[(int)act]; }
+
+        void UpdateMainButtonText() { renameButton.Text = Verb(CurrentAction, Rebuilding); }
+
+        /// <summary>Show the fields and On Finish Success choices that belong to the chosen Action.</summary>
+        void ActionChanged()
+        {
+            var act = CurrentAction;
+            bool rename = act == Act.Rename;
+            nameBox.Parent.Visible = rename; // the frame around the box
+            if (nameLabel != null) nameLabel.Visible = rename;
+            previewButton.Visible = rename;
+            rebuildBox.Visible = !rename; // a rename deletes Binaries/Intermediate, so it always builds from scratch
+            UpdateMainButtonText();
+            bool package = act == Act.Package;
+            buildConfigBox.Parent.Visible = package; // its host panel
+            cookContentBox.Visible = package;
+            buildLocationBox.Parent.Visible = package; // its frame
+            buildLocationBrowse.Visible = package;
+            if (buildLocationLabel != null) buildLocationLabel.Visible = package;
+            if (buildConfigLabel != null) buildConfigLabel.Visible = package;
+
+            // Each action starts on its own default choice...
+            FillWhenDone(package ? PackageWhenDoneDefault : Array.IndexOf(BasicWhenDone, OpenEditor));
+            // ...then gets back what it had last time, if anything.
+            if (settingsLoaded)
+            {
+                SaveFields(shownAction); // the action we're leaving
+                RestoreFields(act);
+            }
+            shownAction = act;
+        }
+
+        // ------------------------------------------------------------------ remembered inputs (per action)
+
+        static readonly string SettingsFile = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "VFSUnrealProjectBuildTool", "settings.json");
+        Dictionary<string, Dictionary<string, string>> savedFields = new Dictionary<string, Dictionary<string, string>>();
+        bool settingsLoaded;  // false until LoadSettings ran (so start-up doesn't save half-filled fields)
+        Act shownAction;      // the action whose fields are on screen
+
+        /// <summary>Reads settings.json and shows the last-used action with its saved fields.</summary>
+        void LoadSettings()
+        {
+            string last = null;
+            try
+            {
+                if (File.Exists(SettingsFile))
+                {
+                    var data = new System.Web.Script.Serialization.JavaScriptSerializer()
+                        .Deserialize<Dictionary<string, object>>(File.ReadAllText(SettingsFile));
+                    object v;
+                    if (data.TryGetValue("LastAction", out v)) last = v as string;
+                    if (data.TryGetValue("Actions", out v) && v is Dictionary<string, object>)
+                        foreach (var a in (Dictionary<string, object>)v)
+                        {
+                            var fields = a.Value as Dictionary<string, object>;
+                            if (fields != null)
+                                savedFields[a.Key] = fields.ToDictionary(f => f.Key, f => f.Value as string ?? "");
+                        }
+                }
+            }
+            catch { } // unreadable settings: start with the defaults
+            shownAction = CurrentAction;
+            settingsLoaded = true;
+            Act lastAct;
+            if (last != null && Enum.TryParse(last, out lastAct) && lastAct != CurrentAction)
+                actionBox.SelectedIndex = (int)lastAct; // ActionChanged restores its fields
+            else
+                RestoreFields(CurrentAction);
+        }
+
+        /// <summary>Remembers the on-screen fields for <paramref name="act"/> and writes settings.json.</summary>
+        void SaveFields(Act act)
+        {
+            if (!settingsLoaded) return;
+            var vs = vsBox.SelectedItem as Engines.VisualStudio;
+            savedFields[act.ToString()] = new Dictionary<string, string>
+            {
+                { "Project", projectBox.Text },
+                { "NewName", nameBox.Text },
+                { "Engine", engineBox.SelectedIndex > 0 ? (string)engineBox.SelectedItem : "" },
+                { "VisualStudio", vs != null ? vs.Path : "" },
+                { "OnFinishSuccess", WhenDone },
+                { "Rebuild", rebuildBox.Checked ? "1" : "0" },
+                { "Build", buildConfigBox.SelectedItem as string ?? "" },
+                { "CleanCook", cookContentBox.Checked ? "1" : "0" },
+                { "BuildLocation", buildLocationBox.Text },
+            };
+            try
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(SettingsFile));
+                var json = new System.Web.Script.Serialization.JavaScriptSerializer().Serialize(new Dictionary<string, object>
+                {
+                    { "LastAction", CurrentAction.ToString() },
+                    { "Actions", savedFields },
+                });
+                File.WriteAllText(SettingsFile, json, new UTF8Encoding(false));
+            }
+            catch { } // can't save: the app still works, it just won't remember
+        }
+
+        /// <summary>Puts back the fields saved for <paramref name="act"/> (anything not saved keeps its current value).</summary>
+        void RestoreFields(Act act)
+        {
+            Dictionary<string, string> f;
+            if (!savedFields.TryGetValue(act.ToString(), out f)) return;
+            string v;
+            if (f.TryGetValue("Project", out v) && v != projectBox.Text) projectBox.Text = v; // also suggests engine / Build location
+            if (f.TryGetValue("NewName", out v)) nameBox.Text = v;
+            if (f.TryGetValue("Engine", out v))
+            {
+                int i = v.Length == 0 ? 0 : engineBox.Items.IndexOf(v);
+                if (i >= 0 && DowngradeMessage(i) == null) SetEngineIndex(i);
+                EngineChanged();
+            }
+            if (f.TryGetValue("VisualStudio", out v) && v.Length > 0)
+            {
+                int i = visualStudios.FindIndex(x => string.Equals(x.Path, v, StringComparison.OrdinalIgnoreCase));
+                if (i >= 0) vsBox.SelectedIndex = i;
+            }
+            if (f.TryGetValue("OnFinishSuccess", out v) && whenDoneBox.Items.Contains(v)) whenDoneBox.SelectedItem = v;
+            if (f.TryGetValue("Rebuild", out v)) rebuildBox.Checked = v == "1";
+            if (f.TryGetValue("Build", out v) && buildConfigBox.Items.Contains(v)) buildConfigBox.SelectedItem = v;
+            if (f.TryGetValue("CleanCook", out v)) cookContentBox.Checked = v == "1";
+            if (f.TryGetValue("BuildLocation", out v) && v.Length > 0) buildLocationBox.Text = v;
             UpdateState();
         }
 
-        static void AddRow(TableLayoutPanel grid, string label, Control field, Control extra)
+        /// <summary>Fill On Finish Success for the current Action and select the choice at <paramref name="select"/>.</summary>
+        void FillWhenDone(int select)
+        {
+            var items = CurrentAction == Act.Package ? PackageWhenDone : BasicWhenDone;
+            whenDoneBox.BeginUpdate();
+            whenDoneBox.Items.Clear();
+            whenDoneBox.Items.AddRange(items);
+            whenDoneBox.SelectedIndex = Math.Max(0, Math.Min(select, items.Length - 1));
+            whenDoneBox.EndUpdate();
+            UpdateState();
+        }
+
+        readonly List<Panel> frames = new List<Panel>(); // button-height boxes around the single-line text boxes
+        readonly List<Panel> hosts = new List<Panel>();  // button-height panels holding the dropdowns
+
+        /// <summary>Puts a dropdown in a plain panel. The table lays rows out by the panel's size, which
+        /// MatchFieldHeights sets to the button height (a combo made taller later isn't re-measured).</summary>
+        Panel Host(ComboBox combo)
+        {
+            var host = new Panel { Size = new Size(combo.Width, combo.Height), Margin = combo.Margin };
+            combo.Margin = new Padding(0);
+            combo.Dock = DockStyle.Top;
+            host.Controls.Add(combo);
+            hosts.Add(host);
+            return host;
+        }
+
+        /// <summary>Puts a text box in a frame as tall as a button, with its text centred vertically
+        /// (a plain single-line text box can't be made taller without its text sticking to the top).</summary>
+        Panel Frame(TextBox tb)
+        {
+            var frame = new Panel { Anchor = AnchorStyles.Left | AnchorStyles.Right, Margin = new Padding(3), Height = 28 };
+            tb.Dock = DockStyle.None;
+            frame.Controls.Add(tb);
+            Action place = () =>
+            {
+                int h = tb.PreferredHeight;
+                tb.SetBounds(6, Math.Max(0, (frame.ClientSize.Height - h) / 2), Math.Max(10, frame.ClientSize.Width - 12), h);
+            };
+            frame.Resize += (s, e) => place();
+            frame.Paint += (s, e) =>
+            {
+                using (var pen = new Pen(Theme.Border)) e.Graphics.DrawRectangle(pen, 0, 0, frame.Width - 1, frame.Height - 1);
+            };
+            frame.Click += (s, e) => tb.Focus();
+            frames.Add(frame);
+            return frame;
+        }
+
+        /// <summary>Makes the text-box frames and the dropdowns exactly as tall as the buttons.</summary>
+        void MatchFieldHeights()
+        {
+            int h = projectBrowse.Height;
+            if (h <= 0) return;
+            foreach (var f in frames) f.Height = h;
+            foreach (var host in hosts)
+            {
+                var combo = (ComboBox)host.Controls[0];
+                int diff = h - combo.Height;
+                if (diff != 0) combo.ItemHeight = Math.Max(10, combo.ItemHeight + diff);
+                host.Height = h; // the rows follow the host panel's size (they ignore a combo grown later)
+            }
+        }
+
+        /// <summary>Adds a full-width 1 px line as its own row (coloured after the theme is applied).</summary>
+        void AddSeparator(TableLayoutPanel grid)
+        {
+            var line = new Panel { Height = 1, Dock = DockStyle.Fill, Margin = new Padding(0, 4, 0, 8) };
+            int row = grid.RowCount++;
+            grid.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            grid.Controls.Add(line, 0, row);
+            grid.SetColumnSpan(line, 3);
+            separators.Add(line);
+        }
+
+        /// <summary>Adds a row; returns its label (null when there is none) so the row can be hidden.</summary>
+        static Label AddRow(TableLayoutPanel grid, string label, Control field, Control extra)
         {
             int row = grid.RowCount++;
             grid.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            Label l = null;
             if (label.Length > 0)
-                grid.Controls.Add(new Label { Text = label, AutoSize = true, Anchor = AnchorStyles.Left, Margin = new Padding(0, 6, 12, 6) }, 0, row);
+            {
+                // Fills the row's height with its text centred, so it lines up with the field next to it.
+                l = new Label { Text = label, AutoSize = true, Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft,
+                                Margin = new Padding(0, 3, 12, 3) };
+                grid.Controls.Add(l, 0, row);
+            }
             grid.Controls.Add(field, 1, row);
             if (extra != null) grid.Controls.Add(extra, 2, row);
             else grid.SetColumnSpan(field, 2);
+            return l;
         }
 
         static string DroppedProject(DragEventArgs e)
@@ -984,6 +1331,17 @@ namespace UnrealProjectRenamer
         void ProjectChanged()
         {
             currentAssociation = "";
+            // Suggest <project>\Packaged as the Build location, unless the user typed or browsed their own.
+            if (File.Exists(ProjectPath))
+            {
+                var suggested = Path.Combine(Path.GetDirectoryName(ProjectPath), "Packaged");
+                var current = buildLocationBox.Text.Trim();
+                if (current.Length == 0 || current == autoBuildLocation)
+                {
+                    autoBuildLocation = suggested;
+                    buildLocationBox.Text = suggested;
+                }
+            }
             if (File.Exists(ProjectPath))
             {
                 try
@@ -1019,11 +1377,15 @@ namespace UnrealProjectRenamer
         {
             var old = OldName;
 
+            var act = CurrentAction;
+            bool rename = act == Act.Rename;
             string problem = null;
             if (!File.Exists(ProjectPath)) problem = "Pick a .uproject to start (or drag one onto this window).";
-            else if (nameBox.Text.Length == 0) problem = "Type the new project name.";
-            else if (!ValidName.IsMatch(nameBox.Text)) problem = "The name must start with a letter and use only letters, digits and underscores.";
-            else if (nameBox.Text == old) problem = "The new name is the same as the current one.";
+            else if (rename && nameBox.Text.Length == 0) problem = "Type the new project name.";
+            else if (rename && !ValidName.IsMatch(nameBox.Text)) problem = "The name must start with a letter and use only letters, digits and underscores.";
+            else if (rename && nameBox.Text == old) problem = "The new name is the same as the current one.";
+            else if (act == Act.Package && buildLocationBox.Text.Trim().Length == 0)
+                problem = "Choose a Build location for the packaged game.";
 
             // Engine / Visual Studio / Windows SDK problems block Rename (it builds), not Preview.
             var blocker = BuildBlocker();
@@ -1037,14 +1399,18 @@ namespace UnrealProjectRenamer
             cancelButton.Visible = busy;
             cancelButton.Enabled = busy && cancellable;
             UpdateSaveLogButton();
-            if (!busy) status.Text = problem ?? (blocker != null ? "Can't rename yet - see the message above. Preview still works."
-                                                                 : "Ready to rename \"" + old + "\" to \"" + nameBox.Text + "\". Preview first to see every change.");
+            if (!busy)
+                status.Text = problem ??
+                    (blocker != null ? (rename ? "Can't rename yet - see the message above. Preview still works."
+                                               : "Can't " + Verb(act, Rebuilding).ToLower() + " yet - see the message above.")
+                     : rename ? "Ready to rename \"" + old + "\" to \"" + nameBox.Text + "\". Preview first to see every change."
+                     : "Ready to " + Verb(act, Rebuilding).ToLower() + " \"" + old + "\".");
         }
 
         /// <summary>Grey out the inputs while a preview or rename runs, so nothing can change under it.</summary>
         void SetInputsLocked(bool locked)
         {
-            foreach (Control c in new Control[] { projectBox, projectBrowse, nameBox, engineBox, vsBox, openEditor })
+            foreach (Control c in new Control[] { actionBox, rebuildBox, buildConfigBox, cookContentBox, buildLocationBox, buildLocationBrowse, projectBox, projectBrowse, nameBox, engineBox, vsBox, whenDoneBox })
                 c.Enabled = !locked;
             AllowDrop = !locked;
         }
@@ -1084,6 +1450,10 @@ namespace UnrealProjectRenamer
                 steps.Add("- Some assets couldn't be resaved (listed in the log). Open them in the editor, fix them and save them.");
             if (has(@"^\s+FAIL\s") || has(@"FAILED: the editor didn't start"))
                 steps.Add("- The plugin check found plugins that didn't load (marked FAIL in the log).");
+            if (has(@"^\s+cook FAILED"))
+                steps.Add("- Cooking the content failed. Look for \"Error:\" lines in the log.");
+            if (has(@"^\s+packaging FAILED"))
+                steps.Add("- Cooking or packaging the build failed. Look for \"Error:\" lines in the log.");
             if (steps.Count == 0)
                 steps.Add("- A step after the rename reported a problem. The output log has the details.");
             return "The project was renamed, but some steps after the rename need attention:\n\n" +
@@ -1116,10 +1486,10 @@ namespace UnrealProjectRenamer
         void SaveLog()
         {
             if (!saveLogButton.Enabled) return;
-            var name = OldName.Length > 0 ? OldName : "UnrealProjectRenamer";
+            var name = OldName.Length > 0 ? OldName : "VFSUnrealProjectBuildTool";
             var folder = lastResultFolder ?? (File.Exists(ProjectPath) ? Path.GetDirectoryName(ProjectPath)
                                                                        : Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments));
-            var path = AskSavePath(this, folder, name + "_rename_log_" + DateTime.Now.ToString("yyyy-MM-dd_HHmm") + ".txt");
+            var path = AskSavePath(this, folder, name + "_log_" + DateTime.Now.ToString("yyyy-MM-dd_HHmm") + ".txt");
             if (path == null) return;
             try
             {
@@ -1139,9 +1509,11 @@ namespace UnrealProjectRenamer
                 if (dlg.ShowDialog(this) == DialogResult.OK) projectBox.Text = dlg.FileName;
         }
 
-        void ConfirmAndRename()
+        /// <summary>The main button: Build / Rebuild / Package / Rename.</summary>
+        void StartAction()
         {
-            // Renaming while the project is open fails partway (locked DLLs, files rewritten underneath an IDE).
+            // Building or renaming while the project is open fails (locked DLLs, Live Coding, files rewritten
+            // underneath an IDE).
             while (true)
             {
                 var open = Engines.ProgramsUsing(ProjectPath, OldName);
@@ -1152,12 +1524,54 @@ namespace UnrealProjectRenamer
                     return;
             }
 
-            string msg = "This renames \"" + OldName + "\" to \"" + nameBox.Text + "\" in place.\n\n" +
-                  "It changes files in the project and deletes Binaries and Intermediate (they are rebuilt). " +
-                  "The project folder keeps its name.\n\n" +
-                  "Close the project in Unreal and Visual Studio, and make sure it is committed or backed up.\n\nContinue?";
-            if (DarkDialog.Ask(this, "Rename project", msg, true, "Rename", "Cancel"))
-                Run(false);
+            if (CurrentAction == Act.Rename)
+            {
+                string msg = "This renames \"" + OldName + "\" to \"" + nameBox.Text + "\" in place.\n\n" +
+                      "It changes files in the project and deletes Binaries and Intermediate (they are rebuilt). " +
+                      "The project folder keeps its name.\n\n" +
+                      "Close the project in Unreal and Visual Studio, and make sure it is committed or backed up.\n\nContinue?";
+                if (!DarkDialog.Ask(this, "Rename project", msg, true, "Rename", "Cancel"))
+                    return;
+            }
+
+            // Packaging goes to the Build location field.
+            packageDir = PackageConfig() != null ? buildLocationBox.Text.Trim() : null;
+            SaveFields(CurrentAction); // remember what this run used
+            Run(false);
+        }
+
+        /// <summary>Folder picker, replaceable so tests can choose a folder. Returns null when cancelled.</summary>
+        internal static Func<IWin32Window, string, string, string> AskFolder = (owner, title, start) =>
+        {
+            using (var dlg = new FolderBrowserDialog { Description = title, ShowNewFolderButton = true })
+            {
+                dlg.SelectedPath = Directory.Exists(start) ? start : Path.GetDirectoryName(start);
+                return dlg.ShowDialog(owner) == DialogResult.OK ? dlg.SelectedPath : null;
+            }
+        };
+
+        string WhenDone { get { return whenDoneBox.SelectedItem as string ?? DoNothing; } }
+
+        /// <summary>Script arguments for the Action's packaging and the On Finish Success choice. Package Build
+        /// packages the Build configuration; Cook content ticked = clean cook, unticked = recook only what changed.</summary>
+        string[] WhenDoneArgs(string choice)
+        {
+            var args = new List<string>();
+            var config = PackageConfig();
+            if (config != null)
+            {
+                args.AddRange(new[] { "--package", config });
+                if (cookContentBox.Checked) args.Add("--clean-cook"); // otherwise only what changed is recooked
+            }
+            if (choice == OpenEditor) args.Add("--open-editor");
+            if (choice == LaunchExe && config != null) args.Add("--launch");
+            return args.ToArray();
+        }
+
+        /// <summary>"Development" / "Shipping" (the Build field) for Package Build, otherwise null.</summary>
+        string PackageConfig()
+        {
+            return CurrentAction == Act.Package ? buildConfigBox.SelectedItem as string ?? BuildConfigs[0] : null;
         }
 
         // ------------------------------------------------------------------ running the script
@@ -1165,10 +1579,10 @@ namespace UnrealProjectRenamer
         static string ExtractScript()
         {
             // A fresh file per run, so two copies of the app never overwrite each other's script.
-            var dir = Path.Combine(Path.GetTempPath(), "UnrealProjectRenamer");
+            var dir = Path.Combine(Path.GetTempPath(), "VFSUnrealProjectBuildTool");
             Directory.CreateDirectory(dir);
             var path = Path.Combine(dir, "rename_" + Guid.NewGuid().ToString("N") + ".py");
-            using (var res = Assembly.GetExecutingAssembly().GetManifestResourceStream("rename_unreal_project.py"))
+            using (var res = Assembly.GetExecutingAssembly().GetManifestResourceStream("VFSUnrealProjectBuildTool.py"))
             using (var file = File.Create(path))
                 res.CopyTo(file);
             return path;
@@ -1200,8 +1614,11 @@ namespace UnrealProjectRenamer
                 return;
             }
 
+            var act = CurrentAction;
+            bool rename = act == Act.Rename;
+            dryRun = dryRun && rename; // only a rename has a preview
             runScript = ExtractScript();
-            var args = new List<string> { "-u", "-I", runScript, ProjectPath, nameBox.Text };
+            var args = new List<string> { "-u", "-I", runScript, ProjectPath };
             var downgrade = DowngradeMessage(engineBox.SelectedIndex);
             if (downgrade != null)
             {
@@ -1210,11 +1627,22 @@ namespace UnrealProjectRenamer
                 Notify(this, "Engine downgrade blocked", downgrade);
                 return;
             }
-            if (dryRun) args.Add("--dry-run"); else args.Add("--yes");
-            if (!dryRun && allowCommonName) args.Add("--allow-common-name");
-            // The app always renames in place and keeps the folder name.
-            args.Add("--in-place");
-            args.Add("--keep-folder-name");
+            if (rename)
+            {
+                args.Add(nameBox.Text);
+                if (dryRun) args.Add("--dry-run"); else args.Add("--yes");
+                if (!dryRun && allowCommonName) args.Add("--allow-common-name");
+                // The app always renames in place and keeps the folder name.
+                args.Add("--in-place");
+                args.Add("--keep-folder-name");
+            }
+            else
+            {
+                args.Add("--action");
+                args.Add(act == Act.Build ? "build" : "package");
+                if (Rebuilding) args.Add("--rebuild");
+                args.Add("--yes");
+            }
             if (engineBox.SelectedIndex > 0)
             {
                 args.Add("--engine-association");
@@ -1231,10 +1659,17 @@ namespace UnrealProjectRenamer
                     var toolset = req != null ? req.UsableToolset(vs) : null;
                     if (toolset != null) { args.Add("--visual-studio-msvc"); args.Add(toolset); }
                 }
-                // Every rename finishes the job: project files, build, resave, redirect cleanup, plugin check.
-                args.AddRange(new[] { "--generate-project-files", "--build", "--resave-assets",
-                                      "--remove-unused-redirects", "--verify-plugins" });
-                if (openEditor.Checked) args.Add("--open-editor");
+                if (rename)
+                    // Every rename finishes the job: project files, build, resave, redirect cleanup, plugin check.
+                    args.AddRange(new[] { "--generate-project-files", "--build", "--resave-assets",
+                                          "--remove-unused-redirects", "--verify-plugins" });
+                else
+                    args.AddRange(new[] { "--generate-project-files", "--build" });
+                args.AddRange(WhenDoneArgs(WhenDone));
+                if (PackageConfig() != null && packageDir != null)
+                {
+                    args.Add("--package-dir"); args.Add(packageDir);
+                }
             }
 
             var psi = new ProcessStartInfo(python, string.Join(" ", args.Select(Quote)))
@@ -1253,11 +1688,20 @@ namespace UnrealProjectRenamer
             int id = ++runId;
             log.Clear();
             lastResultFolder = null;
+            packagedFolder = null;
             openButton.Enabled = false;
             runIsPreview = dryRun;
+            runAction = act;
+            runRebuild = Rebuilding;
             cancelled = false;
-            cancellable = dryRun; // a real rename can't be stopped until its files are renamed
-            status.Text = dryRun ? "Previewing..." : "Renaming, then building and checking assets... this can take several minutes.";
+            // A real rename can't be stopped until its files are renamed; builds and packaging can be stopped anytime.
+            cancellable = dryRun || !rename;
+            status.Text = dryRun ? "Previewing..."
+                : rename ? "Renaming, then building and checking assets... this can take several minutes."
+                : act == Act.Package ? (runRebuild ? "Rebuilding (clean, then build) and packaging... this can take a long time."
+                                                   : "Building and packaging... this can take a long time.")
+                : runRebuild ? "Rebuilding (clean, then build)... this can take several minutes."
+                : "Building... this can take several minutes.";
             running = new Process { StartInfo = psi, EnableRaisingEvents = true };
             running.OutputDataReceived += (s, e) => { if (e.Data != null) AppendFromRun(e.Data, id); };
             running.ErrorDataReceived += (s, e) => { if (e.Data != null) AppendFromRun(e.Data, id); };
@@ -1268,7 +1712,7 @@ namespace UnrealProjectRenamer
                 running.StandardInput.Close();
                 running.BeginOutputReadLine();
                 running.BeginErrorReadLine();
-                // Rename starting (not for Preview, and not again when a common name is confirmed).
+                // Run starting (not for Preview, and not again when a common name is confirmed).
                 if (!dryRun && !allowCommonName) PlaySound(Sfx.Kind.Start);
             }
             catch (Exception ex)
@@ -1292,6 +1736,8 @@ namespace UnrealProjectRenamer
             log.AppendText(line + Environment.NewLine);
             var m = Regex.Match(line, @"^Done: (.+\.uproject)\s*$");
             if (m.Success) lastResultFolder = Path.GetDirectoryName(m.Groups[1].Value);
+            var pk = Regex.Match(line, @"^\s+Packaged: (.+?)\s*$");
+            if (pk.Success) packagedFolder = pk.Groups[1].Value;
 
             // Stopping is only safe while nothing is being written: not while files are renamed (before
             // "Done:"), not while assets are saved, not while redirects are removed, and not once the editor
@@ -1299,9 +1745,10 @@ namespace UnrealProjectRenamer
             if (!runIsPreview)
             {
                 bool was = cancellable;
-                if (m.Success || line.StartsWith("Verifying plugins")) cancellable = true;
+                // Cooking and packaging only write cooked data and the build folder, so they can be stopped.
+                if (m.Success || line.StartsWith("Verifying plugins") || line.StartsWith("Cooking")) cancellable = true;
                 else if (Regex.IsMatch(line, @"^\s+resaving \d+ asset") || line.StartsWith("Removing redirects")
-                         || line.StartsWith("Opening Unreal Editor")) cancellable = false;
+                         || line.StartsWith("Opening Unreal Editor") || line.StartsWith("Launching ")) cancellable = false;
                 if (was != cancellable) UpdateState();
             }
         }
@@ -1309,8 +1756,9 @@ namespace UnrealProjectRenamer
         void CancelRun()
         {
             if (running == null || running.HasExited || !cancellable) return;
-            if (!runIsPreview && !AskUser(this, "Stop", "Stop the remaining steps?\n\nThe project is already renamed. " +
-                    "Stopping now skips whatever is left (build, asset resave or plugin check). You can finish later by " +
+            // Builds and packaging stop without asking (nothing is lost; run it again). A rename asks first.
+            if (!runIsPreview && runAction == Act.Rename && !AskUser(this, "Stop", "Stop the remaining steps?\n\nThe project is already renamed. " +
+                    "Stopping now skips whatever is left (build, asset resave, plugin check, cook or packaging). You can finish later by " +
                     "building the project in Visual Studio or Unreal.", "Stop", "Keep going"))
                 return;
             if (running == null || running.HasExited || !cancellable) return; // it moved on while the dialog was open
@@ -1341,6 +1789,11 @@ namespace UnrealProjectRenamer
             try { if (runScript != null) File.Delete(runScript); } catch { }
             runScript = null;
             UpdateState();
+            if (runAction != Act.Rename)
+            {
+                FinishedAction(code);
+                return;
+            }
             bool renamed = !dryRun && lastResultFolder != null;
             // Point at the renamed project first: changing the box refreshes the status line.
             if (renamed)
@@ -1387,9 +1840,66 @@ namespace UnrealProjectRenamer
             }
             else
             {
-                status.Text = "Renamed and built. All steps finished.";
+                status.Text = packagedFolder != null ? "Renamed, built and packaged. All steps finished. Open folder shows the build."
+                            : log.Text.Contains("  Cooked: ") ? "Renamed, built and cooked. All steps finished."
+                            : "Renamed and built. All steps finished.";
                 PlaySound(Sfx.Kind.Success);
             }
+        }
+
+        /// <summary>End of a Build / Rebuild / Package run (no rename).</summary>
+        void FinishedAction(int code)
+        {
+            lastResultFolder = File.Exists(ProjectPath) ? Path.GetDirectoryName(ProjectPath) : null;
+            openButton.Enabled = lastResultFolder != null;
+            var verb = Verb(runAction, runRebuild);
+            if (cancelled)
+            {
+                log.AppendText(Environment.NewLine + "Stopped by you." + Environment.NewLine);
+                status.Text = "Stopped. Nothing was lost; run it again whenever you like.";
+            }
+            else if (code == 0)
+            {
+                bool launched = log.Text.Contains("\nLaunching ");
+                var built = runRebuild ? "Rebuilt" : "Built";
+                status.Text = packagedFolder != null ? built + " and packaged" + (launched ? ", and the game was started" : "") +
+                                                       ". All steps finished. Open folder shows the build."
+                            : log.Text.Contains("  Cooked: ") ? built + " and cooked. All steps finished."
+                            : built + ". All steps finished.";
+                PlaySound(Sfx.Kind.Success);
+            }
+            else
+            {
+                status.Text = verb + " failed - see the messages above.";
+                PlaySound(Sfx.Kind.Failure);
+                ShowFailure(verb + " failed", ActionFailureMessage());
+            }
+        }
+
+        /// <summary>What went wrong in a Build / Rebuild / Package run, from the script's output.</summary>
+        string ActionFailureMessage()
+        {
+            var lines = log.Lines;
+            Func<string, bool> has = pattern => lines.Any(l => Regex.IsMatch(l, pattern));
+            var steps = new List<string>();
+            foreach (var l in lines.Where(l => l.StartsWith("error: ")).Distinct().Take(3))
+                steps.Add("- " + l.Substring(7).Trim());
+            if (has(@"couldn't find the engine for the follow-up steps") && steps.Count == 0)
+                steps.Add("- The engine wasn't found, so nothing was built.");
+            if (has(@"project file generation failed"))
+                steps.Add("- Generating the Visual Studio project files failed.");
+            if (has(@"build FAILED"))
+                steps.Add("- The build failed" + (runAction == Act.Package ? ", so nothing was cooked or packaged." : "."));
+            if (has(@"^\s+cook FAILED"))
+                steps.Add("- Cooking the content failed.");
+            if (has(@"^\s+packaging FAILED"))
+                steps.Add("- Cooking or packaging the build failed.");
+            if (has(@"^Traceback "))
+                steps.Add("- The tool stopped with an unexpected error.");
+            if (steps.Count == 0)
+                steps.Add("- A step reported a problem.");
+            return "The " + Verb(runAction, runRebuild).ToLower() + " didn't finish:\n\n" + string.Join("\n", steps) +
+                   "\n\nLook for \"error\" lines in the output log for the details.";
         }
     }
 }

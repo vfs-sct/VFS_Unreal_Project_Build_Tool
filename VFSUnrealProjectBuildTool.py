@@ -22,7 +22,8 @@ With --in-place it renames the project where it is instead. Either way it:
   * optionally regenerates the Visual Studio project files
 
 Usage:
-  rename_unreal_project.py <path to .uproject or project folder> <NewName> [options]
+  VFSUnrealProjectBuildTool.py <path to .uproject or project folder> <NewName> [options]
+  VFSUnrealProjectBuildTool.py <path to .uproject or project folder> --action build|rebuild|package [options]
 
 Run with --help for the options. Use --dry-run first to see every change.
 """
@@ -640,7 +641,7 @@ def add_redirects(ini: Path, lines: list[str], old: str, new: str) -> None:
     res = read_text(ini) if ini.exists() else ("", "utf-8")
     text, enc = res
     nl = "\r\n" if "\r\n" in text else "\n"
-    block = nl.join([f"; Added by rename_unreal_project.py ({old} -> {new})"] + lines) + nl
+    block = nl.join([f"; Added by VFSUnrealProjectBuildTool ({old} -> {new})"] + lines) + nl
 
     m = re.search(r"^\[CoreRedirects\][^\S\r\n]*\r?\n", text, re.MULTILINE)
     if m:
@@ -698,11 +699,44 @@ def compute_rewrites(plan: Plan) -> dict[Path, tuple[str, str]]:
 
 
 def generated_paths(root: Path) -> list[Path]:
-    """Build output that an in-place rename deletes (it holds old-name DLLs and is rebuilt)."""
-    paths = [root / d for d in ("Binaries", "Intermediate", ".vs") if (root / d).exists()]
-    paths += [p for p in root.iterdir() if p.is_file() and p.suffix.lower() in SKIP_ROOT_FILE_SUFFIXES]
+    """Build output that an in-place rename deletes (it holds old-name DLLs and is rebuilt).
+    Solution files come first, so a locked cache folder can't stop them being removed."""
+    paths = [p for p in root.iterdir() if p.is_file() and p.suffix.lower() in SKIP_ROOT_FILE_SUFFIXES]
+    # .vs (Visual Studio) and .idea (Rider) are per-user caches keyed to the old solution name.
+    paths += [root / d for d in ("Binaries", "Intermediate", ".vs", ".idea") if (root / d).exists()]
     paths += [p for p in root.glob("Plugins/**/Intermediate") if p.is_dir()]
     return paths
+
+
+def delete_paths(paths: list[Path]) -> list[str]:
+    """Delete files and folders, clearing read-only flags; carry on past anything locked.
+    Returns a message per path that couldn't be (fully) deleted."""
+    import stat
+
+    def clear_readonly(func, path, _exc):
+        try:
+            os.chmod(path, stat.S_IWRITE)
+            func(path)
+        except OSError:
+            pass  # still locked: reported below if anything is left
+
+    problems = []
+    for p in paths:
+        try:
+            if p.is_dir():
+                shutil.rmtree(p, onerror=clear_readonly)
+            elif p.exists():
+                try:
+                    p.unlink()
+                except PermissionError:
+                    os.chmod(p, stat.S_IWRITE)
+                    p.unlink()
+        except OSError as e:
+            problems.append(f"{p.name}: {e.strerror or e}")
+            continue
+        if p.exists():
+            problems.append(f"{p.name}: some files are in use (close Visual Studio / Rider and delete it by hand)")
+    return problems
 
 
 def execute_in_place(plan: Plan) -> None:
@@ -733,8 +767,8 @@ def execute_in_place(plan: Plan) -> None:
     if plan.redirects:
         add_redirects(root / "Config" / "DefaultEngine.ini", plan.redirects, plan.old, plan.new)
 
-    for p in generated_paths(root):
-        shutil.rmtree(p) if p.is_dir() else p.unlink()
+    for problem in delete_paths(generated_paths(root)):
+        print(f"\nwarning: couldn't delete {problem}")
 
 
 # --------------------------------------------------------------------------- project file generation
@@ -874,7 +908,7 @@ def editor_target_name(root: Path) -> str | None:
     return targets[0].name[: -len(".Target.cs")] if targets else None
 
 
-def build_project(engine_dir: Path, uproject: Path, vs: VisualStudio | None = None) -> bool:
+def build_project(engine_dir: Path, uproject: Path, vs: VisualStudio | None = None, rebuild: bool = False) -> bool:
     target = editor_target_name(uproject.parent)
     if not target:
         print("  no *Editor.Target.cs found in Source/")
@@ -882,6 +916,8 @@ def build_project(engine_dir: Path, uproject: Path, vs: VisualStudio | None = No
     script = engine_dir / "Engine" / "Build" / "BatchFiles" / ("Build.bat" if sys.platform == "win32" else "RunUBT.sh")
     platform = {"win32": "Win64", "darwin": "Mac"}.get(sys.platform, "Linux")
     cmd = [str(script), target, platform, "Development", f"-Project={uproject}", "-WaitMutex", "-NoHotReload"]
+    if rebuild:
+        cmd.append("-Rebuild")  # what Engine/Build/BatchFiles/Rebuild.bat adds: clean, then build
     if vs and sys.platform == "win32":
         # -Compiler alone isn't enough: UBT still prefers the toolset it ranks highest (which may belong to
         # another Visual Studio), so also pin this install's own MSVC version.
@@ -1073,7 +1109,8 @@ def remove_unused_redirects(ini: Path, root: Path) -> list[str]:
     # Drop our "; Added by" comments that no longer head any redirect, and an empty section.
     cleaned = []
     for i, line in enumerate(out):
-        if line.startswith("; Added by rename_unreal_project.py"):
+        # The old wording too: projects renamed before the script was renamed have it.
+        if line.startswith(("; Added by VFSUnrealProjectBuildTool", "; Added by rename_unreal_project.py")):
             nxt = out[i + 1].strip() if i + 1 < len(out) else ""
             if not re.match(r"[+\-.!]?\w+Redirects=", nxt):
                 continue
@@ -1237,11 +1274,64 @@ def verify_plugins(engine_dir: Path, uproject: Path) -> bool:
     return all_ok
 
 
+def cook_and_package(engine_dir: Path, uproject: Path, config: str | None, clean: bool,
+                     archive_dir: Path | None, rebuild: bool = False) -> bool:
+    """Cook the project's content for Windows (config None) or cook and package a Development/Shipping build
+    into archive_dir, with UnrealAutomationTool's BuildCookRun. The editor isn't opened. clean=True deletes
+    old cooked data and cooks everything; otherwise only what changed is recooked."""
+    script = engine_dir / "Engine" / "Build" / "BatchFiles" / "RunUAT.bat"
+    if not script.exists():
+        print(f"  could not find {script}")
+        return False
+    if clean:
+        cooked = uproject.parent / "Saved" / "Cooked"
+        if cooked.is_dir():
+            print(f"  deleting old cooked content ({cooked})")
+            shutil.rmtree(cooked, ignore_errors=True)
+    cmd = [str(script), "BuildCookRun", f"-project={uproject}", "-noP4", "-platform=Win64", "-cook",
+           "-nocompileeditor", "-unattended", "-utf8output"]
+    if not clean:
+        cmd.append("-cookincremental")
+    if config:
+        cmd += [f"-clientconfig={config}", "-build", "-stage", "-pak", "-archive", f"-archivedirectory={archive_dir}"]
+        if rebuild:
+            cmd.append("-clean")  # clean the game build first, like the editor's rebuild
+    print("  " + " ".join(f'"{c}"' if " " in c else c for c in cmd))
+    return subprocess.call(cmd) == 0
+
+
 def open_in_editor(engine_dir: Path, uproject: Path) -> None:
     exe = engine_dir / "Engine" / "Binaries" / ("Win64/UnrealEditor.exe" if sys.platform == "win32" else
                                                 ("Mac/UnrealEditor" if sys.platform == "darwin" else "Linux/UnrealEditor"))
     flags = getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
     subprocess.Popen([str(exe), str(uproject)], creationflags=flags, close_fds=True)
+
+
+def run_action(args, uproject: Path) -> int:
+    """--action build/rebuild/package: no rename, just the follow-up steps on the project as it is.
+    Returns 0, 1 if refused before anything ran, or 2 if a step failed."""
+    names = {"build": "Building", "rebuild": "Rebuilding", "package": "Building and packaging"}
+    print(f"{names[args.action]} '{uproject.stem}'")
+    print(f"  project: {uproject}")
+    old_assoc = read_association(uproject)
+    if args.engine_association and args.engine_association != old_assoc:
+        was, to = engine_version(old_assoc), engine_version(args.engine_association)
+        if was and to and to < was:
+            print(f"\nerror: can't switch the project from UE {was[0]}.{was[1]} to the older UE {to[0]}.{to[1]}. "
+                  "Assets saved by a newer engine can't be opened by an older one. Pick the same or a newer engine.")
+            print("\nNothing was changed.")
+            return 1
+        text, enc = read_text(uproject)
+        new_text, n = ASSOC_RE.subn(lambda m: m.group(1) + args.engine_association + m.group(3), text, count=1)
+        if n == 0:  # no EngineAssociation line yet: add one after the opening brace
+            new_text = text.replace("{", '{\n\t"EngineAssociation": "' + args.engine_association + '",', 1)
+        write_text(uproject, new_text, enc)
+        print(f"  engine: {old_assoc or '(none)'} -> {args.engine_association}")
+    else:
+        print(f"  engine: {old_assoc or '(none)'}")
+    if args.action == "package" and not (args.package or args.cook):
+        print("  (no cook or package step chosen: building only)")
+    return after_rename(args, uproject)
 
 
 # --------------------------------------------------------------------------- main
@@ -1252,7 +1342,14 @@ def main() -> int:
         epilog="Run with --dry-run first. The original project is never modified.",
     )
     ap.add_argument("project", help="path to the .uproject file or the folder that contains it")
-    ap.add_argument("new_name", help="new project name (letters, digits, underscores; starts with a letter)")
+    ap.add_argument("new_name", nargs="?",
+                    help="new project name (letters, digits, underscores; starts with a letter). Not used with --action")
+    ap.add_argument("--action", choices=["build", "rebuild", "package"],
+                    help="don't rename: build, rebuild (clean + build) or build then cook/package the project as it is. "
+                         "Combine with --generate-project-files, --package/--cook, --open-editor, --engine-association")
+    ap.add_argument("--launch", action="store_true", help="with --package, start the packaged game when it's done")
+    ap.add_argument("--rebuild", action="store_true",
+                    help="with --action build/package: clean, then build everything (like Visual Studio's Rebuild)")
     ap.add_argument("-o", "--output", help="folder for the renamed copy (default: <parent>/<NewName>)")
     ap.add_argument("-n", "--dry-run", action="store_true", help="show what would change without writing anything")
     ap.add_argument("--in-place", action="store_true",
@@ -1281,6 +1378,13 @@ def main() -> int:
                     help="after building, check every enabled plugin is mounted, its modules load, and the "
                          "project's assets that use it load without warnings")
     ap.add_argument("--open-editor", action="store_true", help="open the renamed project in Unreal Editor at the end")
+    ap.add_argument("--cook", action="store_true", help="after building, cook the content for Windows (editor stays closed)")
+    ap.add_argument("--package", choices=["Development", "Shipping"],
+                    help="after building, cook and package a Windows build in this configuration (editor stays closed)")
+    ap.add_argument("--clean-cook", action="store_true",
+                    help="with --cook/--package, delete old cooked data and cook everything (default: only recook "
+                         "what changed)")
+    ap.add_argument("--package-dir", help="where --package saves the build (default: <project>/Packaged/<config>)")
     ap.add_argument("--engine-dir", help="engine root (e.g. 'C:/Program Files/Epic Games/UE_5.8'); "
                                          "found from EngineAssociation if omitted")
     ap.add_argument("--engine-association",
@@ -1293,6 +1397,10 @@ def main() -> int:
     args = ap.parse_args()
 
     uproject = find_uproject(Path(args.project).resolve())
+    if args.action:
+        return run_action(args, uproject)
+    if not args.new_name:
+        sys.exit("error: give the new project name (or use --action to build without renaming)")
     src_root = uproject.parent
     old, new = uproject.stem, args.new_name
 
@@ -1445,8 +1553,9 @@ def after_rename(args, new_uproject: Path) -> int:
     """Optional follow-up steps. Returns 0, or 2 if a step failed (the rename itself still succeeded)."""
     root = new_uproject.parent
     ini = root / "Config" / "DefaultEngine.ini"
+    wants_package = bool(args.cook or args.package)
     wants_engine = (args.generate_project_files or args.build or args.resave_assets
-                    or args.remove_unused_redirects or args.verify_plugins or args.open_editor)
+                    or args.remove_unused_redirects or args.verify_plugins or args.open_editor or wants_package)
     engine = find_engine_dir(new_uproject, args.engine_dir) if wants_engine else None
     if wants_engine and engine is None:
         print("\nerror: couldn't find the engine for the follow-up steps; pass --engine-dir")
@@ -1478,9 +1587,10 @@ def after_rename(args, new_uproject: Path) -> int:
             print("  project file generation failed (see output above)")
             failed = True
 
-    if args.build or args.resave_assets or args.verify_plugins:
-        print("\nBuilding...")
-        built = build_project(engine, new_uproject, vs)
+    if args.build or args.resave_assets or args.verify_plugins or wants_package:
+        rebuild = bool(getattr(args, "rebuild", False)) or getattr(args, "action", None) == "rebuild"
+        print("\nRebuilding (clean, then build)..." if rebuild else "\nBuilding...")
+        built = build_project(engine, new_uproject, vs, rebuild)
         if not built:
             print("  build FAILED (see output above); skipping the steps that need it")
             failed = True
@@ -1513,6 +1623,33 @@ def after_rename(args, new_uproject: Path) -> int:
         if not plugins_ok:
             failed = True
 
+    packaged_ok = None
+    if wants_package and built:
+        if args.package:
+            out_dir = Path(args.package_dir).resolve() if args.package_dir else root / "Packaged" / args.package
+            print(f"\nCooking and packaging a {args.package} build"
+                  f" ({'clean cook' if args.clean_cook else 'only recooking what changed'})...")
+        else:
+            out_dir = None
+            print(f"\nCooking content ({'clean cook' if args.clean_cook else 'only recooking what changed'})...")
+        packaged_ok = cook_and_package(engine, new_uproject, args.package, args.clean_cook, out_dir,
+                                       bool(getattr(args, "rebuild", False)))
+        if not packaged_ok:
+            print(f"  {'packaging' if args.package else 'cook'} FAILED (see output above)")
+            failed = True
+        elif args.package:
+            print(f"  Packaged: {out_dir}")
+            if args.launch:
+                game = out_dir / "Windows" / f"{new_uproject.stem}.exe"
+                if game.exists():
+                    print(f"\nLaunching {game}")
+                    flags = getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+                    subprocess.Popen([str(game)], cwd=str(game.parent), creationflags=flags, close_fds=True)
+                else:
+                    print(f"\nwarning: packaged, but {game} wasn't found, so it wasn't launched")
+        else:
+            print(f"  Cooked: {root / 'Saved' / 'Cooked'}")
+
     if args.open_editor and (built or not args.build):
         print("\nOpening Unreal Editor...")
         open_in_editor(engine, new_uproject)
@@ -1522,6 +1659,9 @@ def after_rename(args, new_uproject: Path) -> int:
         todo.append("Right-click the new .uproject -> 'Generate Visual Studio project files'")
     if not built:
         todo.append("Build the project (or open the .uproject and let Unreal build it)")
+    if packaged_ok is False:
+        todo.append(f"Fix the {'packaging' if args.package else 'cook'} errors above, then try again "
+                    "(or use Platforms > Windows in the editor)")
     if plugins_ok is False:
         todo.append("Fix the plugins marked FAIL above (see their messages), then build again")
     if skipped:

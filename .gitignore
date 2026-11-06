@@ -1,7 +1,7 @@
-# Unreal Project Renamer
+# VFSUnrealProjectBuildTool
 #
-# UnrealProjectRenamer.exe is committed on purpose: it's what teammates download and run.
-# Rebuild it with App\build.bat after changing App/RenamerApp.cs or rename_unreal_project.py.
+# VFSUnrealProjectBuildTool.exe is committed on purpose: it's what teammates download and run.
+# Rebuild it with App\build.bat after changing App/RenamerApp.cs or VFSUnrealProjectBuildTool.py.
 
 # Python bytecode (created when the script runs)
 __pycache__/
@@ -31,3 +31,6 @@ desktop.ini
 *.swp
 .idea/
 .vscode/
+
+# Old copies the compiler renames aside when the app is open during a build
+*_VFSUnrealProjectBuildTool.exe
