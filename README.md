@@ -21,7 +21,7 @@ There's nothing to install and nothing to build: **`VFSUnrealProjectBuildTool.ex
 you need** (this README is optional). It contains everything else, uses Unreal's own Python
 behind the scenes, and runs on the .NET Framework that comes with Windows.
 
-## Build, rebuild, regenerate or package
+## Build, regenerate, package or upgrade
 
 1. **Close the project** in Unreal Editor, Visual Studio and Rider. The tool checks this
    and won't start while the project is open.
@@ -31,7 +31,7 @@ behind the scenes, and runs on the .NET Framework that comes with Windows.
 3. **Project (.uproject):** click **Browse...** and pick the project's `.uproject`, or drag
    the `.uproject` (or its folder) onto the window.
 4. **Action:** pick **Build Solution** (the default), **Regenerate Visual Studio project
-   files** or **Package Build**. Tick **Rebuild Solution** under it to clean and then build
+   files**, **Package Build** or **Upgrade Project Version**. Tick **Rebuild Solution** under it to clean and then build
    everything (slower; use it when a normal build acts up).
    **Regenerate Visual Studio project files** gives Visual Studio a clean start: it deletes
    `.vs`, `Binaries`, `DerivedDataCache`, `Intermediate`, `.vsconfig` and the `.sln` /
@@ -44,12 +44,18 @@ behind the scenes, and runs on the .NET Framework that comes with Windows.
    old cooked data and cook everything from scratch (slower, safest, e.g. after a rename).
    **Build location** is where the packaged game is saved. It's filled in with the project's
    `Builds` folder; click **Browse...** to choose another. **Package** stays greyed out while it's empty.
-5. **Engine version** and **Visual Studio:** leave them as they are, or pick a newer engine
-   to upgrade the project before building (an older one is blocked).
+   **Upgrade Project Version** moves the project to a newer installed engine. Pick it under
+   **Engine version** (it starts on the newest installed one; this row only shows for this
+   action). After you confirm, it switches the project's engine, deletes the same generated
+   files as Regenerate, generates the project files and builds with the new engine. Commit
+   first: once assets are saved in the newer engine, the old one can't open them. An older
+   engine is blocked. Every other action uses the project's current engine.
+5. **Visual Studio:** leave it as it is; the newest one that works with the engine is picked.
 6. **On Finish Success:** what happens once it worked: **Do nothing**, or **Open in Unreal
    Editor when done** (the default for Build Solution). Package Build adds **Launch .exe**
    (its default), which starts the packaged game. Package Build keeps the editor closed.
-7. Click **Build** (it reads **Rebuild** when Rebuild Solution is ticked) or **Package**.
+7. Click **Build** (it reads **Rebuild** when Rebuild Solution is ticked), **Regenerate**,
+   **Package** or **Upgrade**.
 8. **Wait for it to finish.** A sound plays at the start and the end, and a popup explains
    anything that failed. You can press **Cancel** at any time; nothing is lost. When it's done,
    **Open folder** opens the project, or the packaged build.
@@ -57,7 +63,7 @@ behind the scenes, and runs on the .NET Framework that comes with Windows.
 ## Rename a project
 
 1. **Commit or back up the project.** The rename changes files in place. Do the rename on
-   **one machine** only; your teammates pick it up from the commit (step 13).
+   **one machine** only; your teammates pick it up from the commit (step 12).
 2. **Close the project** in Unreal Editor, Visual Studio and Rider. The tool checks this
    and won't start while the project is open.
 3. Double-click **`VFSUnrealProjectBuildTool.exe`**.
@@ -66,16 +72,14 @@ behind the scenes, and runs on the .NET Framework that comes with Windows.
 5. **New name:** type the new project name. It must start with a letter and use only
    letters, digits and underscores, for example `SpaceRacer` or `Project_X2`. It can be
    up to 20 characters long (Unreal's recommended limit).
-6. **Engine version:** leave it on **Keep current**, or pick a newer installed engine to
-   upgrade the project at the same time. Picking an **older** engine is blocked
-   (see [Messages you might see](#messages-you-might-see)).
-7. **Visual Studio:** the newest Visual Studio that works with the chosen engine is picked
-   for you. Change it only if you need a specific version.
-8. **On Finish Success:** **Open in Unreal Editor when done** (the default) or **Do nothing**.
-9. Click **Preview changes**. This changes nothing. It lists every file that will be
+6. **Visual Studio:** the newest Visual Studio that works with the project's engine is picked
+   for you. Change it only if you need a specific version. (The rename keeps the project's
+   engine; use **Upgrade Project Version** separately to move to a newer one.)
+7. **On Finish Success:** **Open in Unreal Editor when done** (the default) or **Do nothing**.
+8. Click **Preview changes**. This changes nothing. It lists every file that will be
    renamed or edited, the redirects that will be added, and any warnings. Read it.
-10. Click **Rename** and confirm.
-11. **Wait for it to finish.** The rename itself takes a few seconds. The app then
+9. Click **Rename** and confirm.
+10. **Wait for it to finish.** The rename itself takes a few seconds. The app then
     **builds the project, updates the assets and checks the plugins**, which can take
     several minutes. You can press **Cancel** while it's building or checking. It's greyed
     out at the moments when stopping could leave files half-written. If you cancel, the
@@ -84,16 +88,16 @@ behind the scenes, and runs on the .NET Framework that comes with Windows.
     if everything worked, two low notes if something needs your attention. If it fails, a
     popup says which step went wrong and whether anything was changed, with a **Save Output
     Log** button. Cancelling never shows this popup.
-12. When it says **"Renamed and built. All steps finished."**, click **Open folder** or open
+11. When it says **"Renamed and built. All steps finished."**, click **Open folder** or open
     the new `.uproject`, and check the project works. To keep a record of what happened (or
     to share it when asking for help), click **Save Output Log** and choose where to save it.
-13. **Commit everything in one go**: renamed files, deleted old files, `DefaultEngine.ini`
+12. **Commit everything in one go**: renamed files, deleted old files, `DefaultEngine.ini`
     and the resaved assets.
     The app removes class and module redirects that no asset in **your** copy uses any
     more. If **other branches** or unsynced machines have assets that still use the old
     names, or you have **shipped save games**, add the removed lines back from your
     previous commit before committing. The log lists what was removed.
-14. **Teammates** sync, delete their `Binaries/` and `Intermediate/` folders, and open the
+13. **Teammates** sync, delete their `Binaries/` and `Intermediate/` folders, and open the
     new `.uproject`.
 
 ## What Rename Action changes

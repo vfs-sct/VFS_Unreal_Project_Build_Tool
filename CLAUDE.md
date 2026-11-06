@@ -138,8 +138,18 @@ The user asked for these specifically — keep them:
 - **Always runs every follow-up step**: generate project files, build, resave assets,
   remove unused redirects (on), verify plugins. No checkboxes for these.
 - **Action** dropdown at the top (`actionBox`, `enum Act`, added 6 Nov): **Build Solution
-  (default)**, Regenerate Visual Studio project files, Package Build, Rename Project. Settings store
-  the enum names, so the order can change. **Regenerate** (`--action regenerate`, added 6 Nov):
+  (default)**, Regenerate Visual Studio project files, Package Build, Upgrade Project Version, Rename
+  Project. Settings store the enum names, so the order can change.
+  **Upgrade Project Version** (`--action upgrade --engine-association X`, added 6 Nov): the **Engine
+  version row shows only for this action** (`engineLabel` + its row; every other action uses the
+  project's own engine — `SelectedEngine` ignores the dropdown for them, Run passes no
+  `--engine-association`, `PickActionEngine` sets Keep current; their "engine isn't installed"
+  blocker points to Upgrade). It defaults to the newest installed engine that's an upgrade; Keep
+  current or the same engine greys Upgrade out; downgrades stay blocked. A confirm dialog (via
+  `AskUser`) warns it can't be undone. The script refuses a missing / same / uninstalled engine
+  (exit 1, "Nothing was changed"), switches EngineAssociation, does the Regenerate clean-up, then
+  generates project files and builds. On Finish Success: Do nothing / Open in Editor (default
+  Open). After a run the app re-reads the project's engine. **Regenerate** (`--action regenerate`, added 6 Nov):
   `run_action` deletes whichever of `.vs`, `Binaries`, `DerivedDataCache`, `Intermediate`,
   `.vsconfig`, `*.sln`, `*.slnx` exist next to the .uproject (missing ones are skipped; `delete_paths`
   carries on past locked files and the run then exits 2 with "warning: couldn't delete ..."), then

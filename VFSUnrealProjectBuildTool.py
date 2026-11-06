@@ -1311,10 +1311,24 @@ def run_action(args, uproject: Path) -> int:
     """--action build/rebuild/package: no rename, just the follow-up steps on the project as it is.
     Returns 0, 1 if refused before anything ran, or 2 if a step failed."""
     names = {"build": "Building", "rebuild": "Rebuilding", "package": "Building and packaging",
-             "regenerate": "Regenerating Visual Studio project files for"}
+             "regenerate": "Regenerating Visual Studio project files for",
+             "upgrade": "Upgrading the engine version of"}
     print(f"{names[args.action]} '{uproject.stem}'")
     print(f"  project: {uproject}")
     old_assoc = read_association(uproject)
+    if args.action == "upgrade":
+        if not args.engine_association:
+            print("\nerror: --action upgrade needs --engine-association (the engine to upgrade to)")
+            print("\nNothing was changed.")
+            return 1
+        if args.engine_association == old_assoc:
+            print(f"\nerror: the project already uses {old_assoc}")
+            print("\nNothing was changed.")
+            return 1
+        if sys.platform == "win32" and engine_dir_for_association(args.engine_association) is None:
+            print(f"\nerror: engine '{args.engine_association}' isn't installed on this PC")
+            print("\nNothing was changed.")
+            return 1
     if args.engine_association and args.engine_association != old_assoc:
         was, to = engine_version(old_assoc), engine_version(args.engine_association)
         if was and to and to < was:
@@ -1334,7 +1348,7 @@ def run_action(args, uproject: Path) -> int:
         print("  (no cook or package step chosen: building only)")
 
     problems: list[str] = []
-    if args.action == "regenerate":
+    if args.action in ("regenerate", "upgrade"):
         # A clean slate for Visual Studio: generated folders and solution files next to the .uproject.
         root = uproject.parent
         targets = [p for p in root.iterdir() if p.is_file()
@@ -1364,7 +1378,7 @@ def main() -> int:
     ap.add_argument("project", help="path to the .uproject file or the folder that contains it")
     ap.add_argument("new_name", nargs="?",
                     help="new project name (letters, digits, underscores; starts with a letter). Not used with --action")
-    ap.add_argument("--action", choices=["build", "rebuild", "package", "regenerate"],
+    ap.add_argument("--action", choices=["build", "rebuild", "package", "regenerate", "upgrade"],
                     help="don't rename: build, rebuild (clean + build), build then cook/package, or regenerate "
                          "(delete .vs, Binaries, DerivedDataCache, Intermediate, .vsconfig, .sln/.slnx; then use "
                          "--generate-project-files --build) the project as it is. "

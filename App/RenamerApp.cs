@@ -29,7 +29,7 @@ namespace UnrealProjectRenamer
     static class Program
     {
         // App version: bump this for every build you hand out (major.minor.patch).
-        public const string Version = "0.14.0";
+        public const string Version = "0.15.0";
 
         [DllImport("user32.dll")]
         static extern bool SetProcessDPIAware();
@@ -704,12 +704,14 @@ namespace UnrealProjectRenamer
         readonly ComboBox vsBox = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList };
         readonly Label vsNote = new Label { AutoSize = true, ForeColor = Theme.Warn, MaximumSize = new Size(700, 0) };
         // What the app does. Order is the order in the Action dropdown; Build Solution is the default.
-        enum Act { Build, Regenerate, Package, Rename } // settings store these names, so the order can change
-        static readonly string[] ActionNames = { "Build Solution", "Regenerate Visual Studio project files", "Package Build", "Rename Project" };
-        static readonly string[] ActionVerbs = { "Build", "Regenerate", "Package", "Rename" };
+        enum Act { Build, Regenerate, Package, Upgrade, Rename } // settings store these names, so the order can change
+        static readonly string[] ActionNames = { "Build Solution", "Regenerate Visual Studio project files", "Package Build", "Upgrade Project Version", "Rename Project" };
+        static readonly string[] ActionVerbs = { "Build", "Regenerate", "Package", "Upgrade", "Rename" };
         readonly ComboBox actionBox = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList };
         Label nameLabel;
         Act runAction;              // the action of the run in progress (or the last one)
+        Label engineLabel;          // the Engine version row is shown for Upgrade Project Version only
+        string upgradedTo;          // the engine an Upgrade run switches to, e.g. "UE 5.8"
         bool runRebuild;            // whether that run was a rebuild
         // Build Solution and Package Build: clean, then build everything (Unreal's Rebuild). Off by default.
         readonly CheckBox rebuildBox = new DarkCheck { Text = "Rebuild Solution", AutoSize = true, Checked = false };
@@ -822,7 +824,7 @@ namespace UnrealProjectRenamer
             enginePanel.Controls.Add(Host(engineBox));
             engineNote.Margin = new Padding(8, 6, 0, 0);
             enginePanel.Controls.Add(engineNote);
-            AddRow(grid, "Engine version", enginePanel, null);
+            engineLabel = AddRow(grid, "Engine version", enginePanel, null); // Upgrade Project Version only
 
             vsBox.Width = 360;
             vsBox.Margin = new Padding(3);
@@ -989,16 +991,37 @@ namespace UnrealProjectRenamer
             buildLocationBrowse.Visible = package;
             if (buildLocationLabel != null) buildLocationLabel.Visible = package;
             if (buildConfigLabel != null) buildConfigLabel.Visible = package;
+            // Engine version belongs to Upgrade Project Version; every other action uses the project's engine.
+            bool upgrade = act == Act.Upgrade;
+            engineBox.Parent.Parent.Visible = upgrade; // host panel -> engine row panel
+            if (engineLabel != null) engineLabel.Visible = upgrade;
 
-            // Each action starts on its own defaults (Project, Engine version and Visual Studio carry over)...
+            // Each action starts on its own defaults (Project and Visual Studio carry over)...
             FillWhenDone(package ? PackageWhenDoneDefault : Array.IndexOf(BasicWhenDone, OpenEditor));
             rebuildBox.Checked = false;
             cookContentBox.Checked = false;
             buildConfigBox.SelectedIndex = 0; // Development
             if (DefaultBuildLocation() != null) { autoBuildLocation = DefaultBuildLocation(); buildLocationBox.Text = autoBuildLocation; }
+            PickActionEngine();
             // ...then gets back what it had last time, if anything.
             if (settingsLoaded) RestoreFields(act);
             shownAction = act;
+        }
+
+        /// <summary>Upgrade Project Version: the newest installed engine that's an upgrade for this project.
+        /// Every other action: "Keep current" (they always build with the project's own engine).</summary>
+        void PickActionEngine()
+        {
+            if (CurrentAction != Act.Upgrade) { SetEngineIndex(0); EngineChanged(); return; }
+            for (int i = 1; i < engineBox.Items.Count; i++) // newest first
+                if (DowngradeMessage(i) == null && (string)engineBox.Items[i] != "UE " + currentAssociation)
+                {
+                    SetEngineIndex(i);
+                    EngineChanged();
+                    return;
+                }
+            SetEngineIndex(0);
+            EngineChanged();
         }
 
         // ------------------------------------------------------------------ remembered inputs (per action)
@@ -1078,7 +1101,7 @@ namespace UnrealProjectRenamer
             string v;
             // An empty saved project never clears the one on screen (it carries over instead).
             if (f.TryGetValue("Project", out v) && v.Length > 0 && v != projectBox.Text) projectBox.Text = v; // also suggests engine / Build location
-            if (f.TryGetValue("Engine", out v))
+            if (act == Act.Upgrade && f.TryGetValue("Engine", out v) && v.Length > 0) // only Upgrade picks an engine
             {
                 int i = v.Length == 0 ? 0 : engineBox.Items.IndexOf(v);
                 if (i >= 0 && DowngradeMessage(i) == null) SetEngineIndex(i);
@@ -1250,7 +1273,7 @@ namespace UnrealProjectRenamer
         void SelectedEngine(out string dir, out string name)
         {
             dir = null; name = null;
-            if (engineBox.SelectedIndex > 0)
+            if (CurrentAction == Act.Upgrade && engineBox.SelectedIndex > 0) // only Upgrade switches engines
             {
                 var ver = ((string)engineBox.SelectedItem).Substring(3);
                 Engines.Installed().TryGetValue(ver, out dir);
@@ -1287,7 +1310,9 @@ namespace UnrealProjectRenamer
             {
                 if (Engines.Installed().Count == 0 && Engines.SourceBuilds().Count == 0)
                     return "No Unreal Engine is installed on this PC, so the renamed project can't be built. Install Unreal Engine first.";
-                return "This project's engine (" + Short(currentAssociation) + ") isn't installed on this PC. Pick an installed engine under Engine version.";
+                return "This project's engine (" + Short(currentAssociation) + ") isn't installed on this PC. " +
+                       (CurrentAction == Act.Upgrade ? "Pick an installed engine under Engine version."
+                                                     : "Use the Upgrade Project Version action to move it to an installed engine.");
             }
             if (visualStudios.Count == 0)
                 return "No Visual Studio is installed. Install Visual Studio 2022 or newer with the \"Game development with C++\" workload.";
@@ -1398,12 +1423,8 @@ namespace UnrealProjectRenamer
                 }
                 catch { }
                 engineBox.Items[0] = KeepEngine + " (" + (currentAssociation.Length > 0 ? currentAssociation : "none") + ")";
-                // An association this PC doesn't know makes Unreal ask for a version on every open,
-                // so suggest the newest installed engine instead (unless that would be a downgrade).
-                if (!Engines.IsRegistered(currentAssociation) && engineBox.Items.Count > 1 && DowngradeMessage(1) == null)
-                    SetEngineIndex(1);
-                else
-                    SetEngineIndex(0);
+                // Upgrade Project Version suggests the newest engine that is an upgrade; other actions keep the project's.
+                PickActionEngine();
             }
             UpdateEngineNote();
             UpdateState();
@@ -1431,6 +1452,10 @@ namespace UnrealProjectRenamer
             else if (rename && nameBox.Text.Length == 0) problem = "Type the new project name.";
             else if (rename && !ValidName.IsMatch(nameBox.Text)) problem = "The name must start with a letter and use only letters, digits and underscores.";
             else if (rename && nameBox.Text == old) problem = "The new name is the same as the current one.";
+            else if (act == Act.Upgrade && engineBox.SelectedIndex <= 0)
+                problem = "Pick the engine version to upgrade to (no newer engine is installed, or Keep current is selected).";
+            else if (act == Act.Upgrade && (string)engineBox.SelectedItem == "UE " + currentAssociation)
+                problem = "The project already uses " + engineBox.SelectedItem + ". Pick a newer engine version.";
             else if (act == Act.Package && buildLocationBox.Text.Trim().Length == 0)
                 problem = "Choose a Build location for the packaged game (Browse...).";
 
@@ -1581,6 +1606,18 @@ namespace UnrealProjectRenamer
                 if (!DarkDialog.Ask(this, "Rename project", msg, true, "Rename", "Cancel"))
                     return;
             }
+            if (CurrentAction == Act.Upgrade)
+            {
+                string msg = "This switches \"" + OldName + "\" from " +
+                      (Regex.IsMatch(currentAssociation, @"^\d+\.\d+") ? "UE " + currentAssociation : Short(currentAssociation)) +
+                      " to " + engineBox.SelectedItem + ".\n\n" +
+                      "It deletes .vs, Binaries, DerivedDataCache, Intermediate, .vsconfig and the .sln / .slnx files, " +
+                      "regenerates the Visual Studio project files and builds with the new engine.\n\n" +
+                      "Once assets are saved in the newer engine they can't be opened in the old one, so make sure the " +
+                      "project is committed or backed up.\n\nContinue?";
+                if (!AskUser(this, "Upgrade project version", msg, "Upgrade", "Cancel"))
+                    return;
+            }
 
             // Packaging goes to the Build location field.
             packageDir = PackageConfig() != null ? ChosenBuildLocation() : null;
@@ -1709,11 +1746,11 @@ namespace UnrealProjectRenamer
             else
             {
                 args.Add("--action");
-                args.Add(act == Act.Build ? "build" : act == Act.Regenerate ? "regenerate" : "package");
+                args.Add(act == Act.Build ? "build" : act == Act.Regenerate ? "regenerate" : act == Act.Upgrade ? "upgrade" : "package");
                 if (Rebuilding) args.Add("--rebuild");
                 args.Add("--yes");
             }
-            if (engineBox.SelectedIndex > 0)
+            if (act == Act.Upgrade && engineBox.SelectedIndex > 0) // only Upgrade switches the engine
             {
                 args.Add("--engine-association");
                 args.Add(((string)engineBox.SelectedItem).Substring(3));
@@ -1762,6 +1799,7 @@ namespace UnrealProjectRenamer
             runIsPreview = dryRun;
             runAction = act;
             runRebuild = Rebuilding;
+            upgradedTo = act == Act.Upgrade ? engineBox.SelectedItem as string : null;
             cancelled = false;
             // A real rename can't be stopped until its files are renamed; builds and packaging can be stopped anytime.
             cancellable = dryRun || !rename;
@@ -1769,6 +1807,7 @@ namespace UnrealProjectRenamer
                 : rename ? "Renaming, then building and checking assets... this can take several minutes."
                 : act == Act.Package ? (runRebuild ? "Rebuilding (clean, then build) and packaging... this can take a long time."
                                                    : "Building and packaging... this can take a long time.")
+                : act == Act.Upgrade ? "Switching to " + engineBox.SelectedItem + ", regenerating project files, then building... this can take several minutes."
                 : act == Act.Regenerate ? "Deleting generated files, regenerating project files, then building... this can take several minutes."
                 : runRebuild ? "Rebuilding (clean, then build)... this can take several minutes."
                 : "Building... this can take several minutes.";
@@ -1919,6 +1958,7 @@ namespace UnrealProjectRenamer
         /// <summary>End of a Build / Rebuild / Package run (no rename).</summary>
         void FinishedAction(int code)
         {
+            if (runAction == Act.Upgrade) ProjectChanged(); // re-read the project's (new) engine
             lastResultFolder = File.Exists(ProjectPath) ? Path.GetDirectoryName(ProjectPath) : null;
             var verb = Verb(runAction, runRebuild);
             if (cancelled)
@@ -1929,7 +1969,8 @@ namespace UnrealProjectRenamer
             else if (code == 0)
             {
                 bool launched = log.Text.Contains("\nLaunching ");
-                var built = runAction == Act.Regenerate ? "Regenerated project files and built" : runRebuild ? "Rebuilt" : "Built";
+                var built = runAction == Act.Upgrade ? "Upgraded to " + upgradedTo + ", regenerated project files and built"
+                          : runAction == Act.Regenerate ? "Regenerated project files and built" : runRebuild ? "Rebuilt" : "Built";
                 status.Text = packagedFolder != null ? built + " and packaged" + (launched ? ", and the game was started" : "") +
                                                        ". All steps finished. Open folder shows the build."
                             : log.Text.Contains("  Cooked: ") ? built + " and cooked. All steps finished."
