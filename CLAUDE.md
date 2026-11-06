@@ -138,7 +138,13 @@ The user asked for these specifically — keep them:
 - **Always runs every follow-up step**: generate project files, build, resave assets,
   remove unused redirects (on), verify plugins. No checkboxes for these.
 - **Action** dropdown at the top (`actionBox`, `enum Act`, added 6 Nov): **Build Solution
-  (default)**, Package Build, Rename Project. (Rebuild Solution was an action until 6 Nov; it's now
+  (default)**, Regenerate Visual Studio project files, Package Build, Rename Project. Settings store
+  the enum names, so the order can change. **Regenerate** (`--action regenerate`, added 6 Nov):
+  `run_action` deletes whichever of `.vs`, `Binaries`, `DerivedDataCache`, `Intermediate`,
+  `.vsconfig`, `*.sln`, `*.slnx` exist next to the .uproject (missing ones are skipped; `delete_paths`
+  carries on past locked files and the run then exits 2 with "warning: couldn't delete ..."), then
+  generates project files and builds. On Finish Success: Do nothing / Open in Editor; Rebuild
+  Solution hidden (the build is from scratch anyway); button "Regenerate". (Rebuild Solution was an action until 6 Nov; it's now
   the **Rebuild Solution** checkbox under Action, `rebuildBox`, unticked by default, shown for Build
   Solution and Package Build — a rename always builds from scratch.) `ActionChanged` shows New name
   and Preview changes only for Rename, relabels the main button (Build — "Rebuild" when ticked —
@@ -164,7 +170,7 @@ The user asked for these specifically — keep them:
   buttons (`MatchFieldHeights`: text boxes sit in `Frame` panels, dropdowns in `Host` panels, because
   the table never re-measures a combo grown through ItemHeight and combos ignore MinimumSize).
 - **Remembered inputs, per action** (added 6 Nov): `%APPDATA%\VFSUnrealProjectBuildTool\settings.json`
-  holds `LastAction` and, for each action, Project, NewName, Engine, VisualStudio (install path),
+  holds `LastAction` and, for each action, Project, Engine, VisualStudio (install path),
   OnFinishSuccess, Rebuild, Build, CleanCook, BuildLocation. `ActionChanged` saves the action being
   left **before** touching the screen, resets the action options to their defaults (On Finish
   Success: Open in Editor, or Launch .exe for Package; Rebuild/Clean cook off; Development;
@@ -175,6 +181,11 @@ The user asked for these specifically — keep them:
   saved inputs, and switching saved the new action's default On Finish Success into the old action.
   Tested in-process with a scratch settings file (`MainForm.SettingsFile` is replaceable for that):
   each action keeps its own On Finish Success / Rebuild / Build across switches and restarts.
+  An empty saved Project never clears the project on screen (it carries over). New name is never
+  saved (the user's choice; an old saved NewName is ignored).
+- **Open folder** (`OpenFolderTarget`, set in `UpdateState`): greyed out with no project and during a
+  run; opens the packaged build after a successful Package (reset when the project changes),
+  otherwise the project's folder.
   Rebuild Solution and Clean cook content have hover tooltips explaining them
   (`Theme.DarkToolTip`: owner-drawn in the dark theme, wrapped at 360 px, 30 s display). `WhenDoneArgs` → `--package <config>
   [--clean-cook]` (+ `--open-editor` or `--launch`). The script still supports `--cook` (cook

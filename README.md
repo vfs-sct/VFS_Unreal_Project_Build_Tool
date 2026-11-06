@@ -21,7 +21,7 @@ There's nothing to install and nothing to build: **`VFSUnrealProjectBuildTool.ex
 you need** (this README is optional). It contains everything else, uses Unreal's own Python
 behind the scenes, and runs on the .NET Framework that comes with Windows.
 
-## Build, rebuild or package
+## Build, rebuild, regenerate or package
 
 1. **Close the project** in Unreal Editor, Visual Studio and Rider. The tool checks this
    and won't start while the project is open.
@@ -30,9 +30,15 @@ behind the scenes, and runs on the .NET Framework that comes with Windows.
    **More info → Run anyway**.
 3. **Project (.uproject):** click **Browse...** and pick the project's `.uproject`, or drag
    the `.uproject` (or its folder) onto the window.
-4. **Action:** pick **Build Solution** (the default) or **Package Build**. Tick **Rebuild
-   Solution** under it to clean and then build everything (slower; use it when a normal
-   build acts up). For Package Build, also pick the **Build**
+4. **Action:** pick **Build Solution** (the default), **Regenerate Visual Studio project
+   files** or **Package Build**. Tick **Rebuild Solution** under it to clean and then build
+   everything (slower; use it when a normal build acts up).
+   **Regenerate Visual Studio project files** gives Visual Studio a clean start: it deletes
+   `.vs`, `Binaries`, `DerivedDataCache`, `Intermediate`, `.vsconfig` and the `.sln` /
+   `.slnx` files next to the `.uproject` (whichever exist), generates the Visual Studio
+   project files again, then builds. Use it when Visual Studio or IntelliSense gets confused,
+   or after switching engine versions. `Content`, `Source`, `Config` and `Saved` aren't
+   touched. For Package Build, also pick the **Build**
    configuration: **Development** (the default) or **Shipping**. Content is always cooked;
    by default only what changed is recooked (faster). Tick **Clean cook content** to delete
    old cooked data and cook everything from scratch (slower, safest, e.g. after a rename).

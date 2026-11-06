@@ -29,7 +29,7 @@ namespace UnrealProjectRenamer
     static class Program
     {
         // App version: bump this for every build you hand out (major.minor.patch).
-        public const string Version = "0.13.1";
+        public const string Version = "0.14.0";
 
         [DllImport("user32.dll")]
         static extern bool SetProcessDPIAware();
@@ -704,9 +704,9 @@ namespace UnrealProjectRenamer
         readonly ComboBox vsBox = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList };
         readonly Label vsNote = new Label { AutoSize = true, ForeColor = Theme.Warn, MaximumSize = new Size(700, 0) };
         // What the app does. Order is the order in the Action dropdown; Build Solution is the default.
-        enum Act { Build, Package, Rename }
-        static readonly string[] ActionNames = { "Build Solution", "Package Build", "Rename Project" };
-        static readonly string[] ActionVerbs = { "Build", "Package", "Rename" };
+        enum Act { Build, Regenerate, Package, Rename } // settings store these names, so the order can change
+        static readonly string[] ActionNames = { "Build Solution", "Regenerate Visual Studio project files", "Package Build", "Rename Project" };
+        static readonly string[] ActionVerbs = { "Build", "Regenerate", "Package", "Rename" };
         readonly ComboBox actionBox = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList };
         Label nameLabel;
         Act runAction;              // the action of the run in progress (or the last one)
@@ -906,8 +906,8 @@ namespace UnrealProjectRenamer
             openButton.Click += (s, e) =>
             {
                 // After packaging, open the packaged build; otherwise the project.
-                var folder = packagedFolder != null && Directory.Exists(packagedFolder) ? packagedFolder : lastResultFolder;
-                if (folder != null && Directory.Exists(folder)) Process.Start("explorer.exe", "\"" + folder + "\"");
+                var folder = OpenFolderTarget();
+                if (folder != null) Process.Start("explorer.exe", "\"" + folder + "\"");
             };
             DragEnter += (s, e) => { if (DroppedProject(e) != null) e.Effect = DragDropEffects.Copy; };
             DragDrop += (s, e) => { var p = DroppedProject(e); if (p != null && projectBox.Enabled) projectBox.Text = p; };
@@ -962,7 +962,7 @@ namespace UnrealProjectRenamer
 
         Act CurrentAction { get { return (Act)Math.Max(0, actionBox.SelectedIndex); } }
 
-        bool Rebuilding { get { return rebuildBox.Checked && CurrentAction != Act.Rename; } }
+        bool Rebuilding { get { return rebuildBox.Checked && (CurrentAction == Act.Build || CurrentAction == Act.Package); } }
 
         /// <summary>Verb for an action, e.g. "Build", "Rebuild", "Package", "Rename".</summary>
         static string Verb(Act act, bool rebuild) { return act == Act.Build && rebuild ? "Rebuild" : ActionVerbs[(int)act]; }
@@ -979,7 +979,8 @@ namespace UnrealProjectRenamer
             nameBox.Parent.Visible = rename; // the frame around the box
             if (nameLabel != null) nameLabel.Visible = rename;
             previewButton.Visible = rename;
-            rebuildBox.Visible = !rename; // a rename deletes Binaries/Intermediate, so it always builds from scratch
+            // A rename or a regenerate deletes Binaries/Intermediate, so it always builds from scratch.
+            rebuildBox.Visible = act == Act.Build || act == Act.Package;
             UpdateMainButtonText();
             bool package = act == Act.Package;
             buildConfigBox.Parent.Visible = package; // its host panel
@@ -1048,7 +1049,6 @@ namespace UnrealProjectRenamer
             savedFields[act.ToString()] = new Dictionary<string, string>
             {
                 { "Project", projectBox.Text },
-                { "NewName", nameBox.Text },
                 { "Engine", engineBox.SelectedIndex > 0 ? (string)engineBox.SelectedItem : "" },
                 { "VisualStudio", vs != null ? vs.Path : "" },
                 { "OnFinishSuccess", WhenDone },
@@ -1076,8 +1076,8 @@ namespace UnrealProjectRenamer
             Dictionary<string, string> f;
             if (!savedFields.TryGetValue(act.ToString(), out f)) return;
             string v;
-            if (f.TryGetValue("Project", out v) && v != projectBox.Text) projectBox.Text = v; // also suggests engine / Build location
-            if (f.TryGetValue("NewName", out v)) nameBox.Text = v;
+            // An empty saved project never clears the one on screen (it carries over instead).
+            if (f.TryGetValue("Project", out v) && v.Length > 0 && v != projectBox.Text) projectBox.Text = v; // also suggests engine / Build location
             if (f.TryGetValue("Engine", out v))
             {
                 int i = v.Length == 0 ? 0 : engineBox.Items.IndexOf(v);
@@ -1344,6 +1344,15 @@ namespace UnrealProjectRenamer
             UpdateState();
         }
 
+        /// <summary>What Open folder opens: the packaged build after a successful Package, otherwise the
+        /// project's folder. Null (button greyed out) when no project is chosen.</summary>
+        string OpenFolderTarget()
+        {
+            if (!File.Exists(ProjectPath)) return null;
+            if (packagedFolder != null && Directory.Exists(packagedFolder)) return packagedFolder;
+            return Path.GetDirectoryName(ProjectPath);
+        }
+
         /// <summary>&lt;project folder&gt;\Builds, the Build location used when none is chosen; null without a project.</summary>
         string DefaultBuildLocation()
         {
@@ -1368,6 +1377,7 @@ namespace UnrealProjectRenamer
         void ProjectChanged()
         {
             currentAssociation = "";
+            packagedFolder = null; // Open folder shows this project's folder, not another project's build
             // Suggest <project>\Builds as the Build location, unless the user typed or browsed their own.
             var suggested = DefaultBuildLocation();
             if (suggested != null)
@@ -1435,6 +1445,7 @@ namespace UnrealProjectRenamer
             renameButton.Enabled = problem == null && blocker == null && !busy;
             cancelButton.Visible = busy;
             cancelButton.Enabled = busy && cancellable;
+            openButton.Enabled = !busy && OpenFolderTarget() != null; // greyed out without a project
             UpdateSaveLogButton();
             if (!busy)
                 status.Text = problem ??
@@ -1698,7 +1709,7 @@ namespace UnrealProjectRenamer
             else
             {
                 args.Add("--action");
-                args.Add(act == Act.Build ? "build" : "package");
+                args.Add(act == Act.Build ? "build" : act == Act.Regenerate ? "regenerate" : "package");
                 if (Rebuilding) args.Add("--rebuild");
                 args.Add("--yes");
             }
@@ -1748,7 +1759,6 @@ namespace UnrealProjectRenamer
             log.Clear();
             lastResultFolder = null;
             packagedFolder = null;
-            openButton.Enabled = false;
             runIsPreview = dryRun;
             runAction = act;
             runRebuild = Rebuilding;
@@ -1759,6 +1769,7 @@ namespace UnrealProjectRenamer
                 : rename ? "Renaming, then building and checking assets... this can take several minutes."
                 : act == Act.Package ? (runRebuild ? "Rebuilding (clean, then build) and packaging... this can take a long time."
                                                    : "Building and packaging... this can take a long time.")
+                : act == Act.Regenerate ? "Deleting generated files, regenerating project files, then building... this can take several minutes."
                 : runRebuild ? "Rebuilding (clean, then build)... this can take several minutes."
                 : "Building... this can take several minutes.";
             running = new Process { StartInfo = psi, EnableRaisingEvents = true };
@@ -1857,7 +1868,6 @@ namespace UnrealProjectRenamer
             // Point at the renamed project first: changing the box refreshes the status line.
             if (renamed)
                 projectBox.Text = Path.Combine(lastResultFolder, nameBox.Text + ".uproject");
-            openButton.Enabled = renamed;
 
             // Exit code 3: the old name is a common word and the script wants confirmation (nothing was written).
             if (!dryRun && !cancelled && code == 3)
@@ -1910,7 +1920,6 @@ namespace UnrealProjectRenamer
         void FinishedAction(int code)
         {
             lastResultFolder = File.Exists(ProjectPath) ? Path.GetDirectoryName(ProjectPath) : null;
-            openButton.Enabled = lastResultFolder != null;
             var verb = Verb(runAction, runRebuild);
             if (cancelled)
             {
@@ -1920,7 +1929,7 @@ namespace UnrealProjectRenamer
             else if (code == 0)
             {
                 bool launched = log.Text.Contains("\nLaunching ");
-                var built = runRebuild ? "Rebuilt" : "Built";
+                var built = runAction == Act.Regenerate ? "Regenerated project files and built" : runRebuild ? "Rebuilt" : "Built";
                 status.Text = packagedFolder != null ? built + " and packaged" + (launched ? ", and the game was started" : "") +
                                                        ". All steps finished. Open folder shows the build."
                             : log.Text.Contains("  Cooked: ") ? built + " and cooked. All steps finished."
@@ -1943,6 +1952,10 @@ namespace UnrealProjectRenamer
             var steps = new List<string>();
             foreach (var l in lines.Where(l => l.StartsWith("error: ")).Distinct().Take(3))
                 steps.Add("- " + l.Substring(7).Trim());
+            var locked = lines.Where(l => Regex.IsMatch(l, @"^\s+warning: couldn't delete ")).Select(l => l.Trim().Substring(24)).ToList();
+            if (locked.Count > 0)
+                steps.Add("- Some generated files couldn't be deleted (in use - close Visual Studio, Rider or the editor and " +
+                          "run it again): " + string.Join(", ", locked.Select(x => x.Split(':')[0]).Distinct().Take(5)));
             if (has(@"couldn't find the engine for the follow-up steps") && steps.Count == 0)
                 steps.Add("- The engine wasn't found, so nothing was built.");
             if (has(@"project file generation failed"))

@@ -1310,7 +1310,8 @@ def open_in_editor(engine_dir: Path, uproject: Path) -> None:
 def run_action(args, uproject: Path) -> int:
     """--action build/rebuild/package: no rename, just the follow-up steps on the project as it is.
     Returns 0, 1 if refused before anything ran, or 2 if a step failed."""
-    names = {"build": "Building", "rebuild": "Rebuilding", "package": "Building and packaging"}
+    names = {"build": "Building", "rebuild": "Rebuilding", "package": "Building and packaging",
+             "regenerate": "Regenerating Visual Studio project files for"}
     print(f"{names[args.action]} '{uproject.stem}'")
     print(f"  project: {uproject}")
     old_assoc = read_association(uproject)
@@ -1331,7 +1332,26 @@ def run_action(args, uproject: Path) -> int:
         print(f"  engine: {old_assoc or '(none)'}")
     if args.action == "package" and not (args.package or args.cook):
         print("  (no cook or package step chosen: building only)")
-    return after_rename(args, uproject)
+
+    problems: list[str] = []
+    if args.action == "regenerate":
+        # A clean slate for Visual Studio: generated folders and solution files next to the .uproject.
+        root = uproject.parent
+        targets = [p for p in root.iterdir() if p.is_file()
+                   and (p.name.lower() == ".vsconfig" or p.suffix.lower() in (".sln", ".slnx"))]
+        targets += [root / d for d in (".vs", "Binaries", "DerivedDataCache", "Intermediate") if (root / d).exists()]
+        print("\nDeleting generated files...")
+        for p in targets:
+            print(f"  {p.name}{'/' if p.is_dir() else ''}")
+        if not targets:
+            print("  nothing to delete")
+        problems = delete_paths(targets)
+        for p in problems:
+            print(f"  warning: couldn't delete {p}")
+
+    code = after_rename(args, uproject)
+    # Anything left behind (in use) counts as a step that needs attention.
+    return 2 if problems and code == 0 else code
 
 
 # --------------------------------------------------------------------------- main
@@ -1344,8 +1364,10 @@ def main() -> int:
     ap.add_argument("project", help="path to the .uproject file or the folder that contains it")
     ap.add_argument("new_name", nargs="?",
                     help="new project name (letters, digits, underscores; starts with a letter). Not used with --action")
-    ap.add_argument("--action", choices=["build", "rebuild", "package"],
-                    help="don't rename: build, rebuild (clean + build) or build then cook/package the project as it is. "
+    ap.add_argument("--action", choices=["build", "rebuild", "package", "regenerate"],
+                    help="don't rename: build, rebuild (clean + build), build then cook/package, or regenerate "
+                         "(delete .vs, Binaries, DerivedDataCache, Intermediate, .vsconfig, .sln/.slnx; then use "
+                         "--generate-project-files --build) the project as it is. "
                          "Combine with --generate-project-files, --package/--cook, --open-editor, --engine-association")
     ap.add_argument("--launch", action="store_true", help="with --package, start the packaged game when it's done")
     ap.add_argument("--rebuild", action="store_true",
