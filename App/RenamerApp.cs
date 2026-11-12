@@ -29,7 +29,7 @@ namespace UnrealProjectRenamer
     static class Program
     {
         // App version: bump this for every build you hand out (major.minor.patch).
-        public const string Version = "0.18.0";
+        public const string Version = "0.18.1";
 
         [DllImport("user32.dll")]
         static extern bool SetProcessDPIAware();

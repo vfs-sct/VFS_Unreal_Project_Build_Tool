@@ -22,7 +22,8 @@ names). Teammates get `VFSUnrealProjectBuildTool.exe` + `README.md`
      approve, bump minor instead.
    - **Minor** (0.X.0): new features or behaviour changes.
    - **Patch** (0.0.X): hotfixes.
-   Bumping minor resets patch to 0; bumping major resets both. Then rebuild with
+   Bumping minor resets patch to 0; bumping major resets both. **Also update the README title**
+   (`# VFS Unreal Project Build Tool v<version>`, line 1) to the same version. Then rebuild with
    `App\build.bat`, commit the bump with the rest, and push. Tell the user the old and new
    version and why.
 2. This PC runs **SentinelOne**. On 4 Nov it flagged a Claude Code session, killed it and

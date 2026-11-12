@@ -1,6 +1,6 @@
-# VFS Unreal Project Build Tool
+# VFS Unreal Project Build Tool v0.18.1
 
-## Summary
+### Summary
 
 - One app for Unreal Engine **C++ projects**. No editor needed for building or packaging.
 - Five actions:
@@ -12,7 +12,7 @@
 
 ---
 
-## Tools Required
+### Tools Required
 
 - A C++ Unreal Project.
 - Windows 10 or 11.
@@ -23,9 +23,9 @@
 
 ---
 
-## Steps for each action
+### Steps for each action
 
-### Every action
+#### Every action
 
 1. Close the project in Unreal Editor, Visual Studio and Rider.
 2. Open `VFSUnrealProjectBuildTool.exe`.
@@ -49,7 +49,7 @@
 - **Save Output Log** saves the log as a `.txt` (useful when asking for help).
 - **Open folder** opens the project folder, or the packaged build after Package Build.
 
-### Build Solution
+#### Build Solution
 
 1. Optional: tick **Rebuild Solution** to clean and build everything from scratch (slower; use it when a normal build acts up). Hover over it for an explanation.
 
@@ -63,7 +63,7 @@
 
    ![Build Solution finished](Docs/12-build-done.png)
 
-### Regenerate Visual Studio project files
+#### Regenerate Visual Studio project files
 
 Use when Visual Studio or IntelliSense is confused.
 
@@ -80,7 +80,7 @@ Use when Visual Studio or IntelliSense is confused.
 - `Content`, `Source`, `Config` and `Saved` aren't touched.
 - The next editor launch and the next cook are slower once (the deleted cache is rebuilt).
 
-### Package Build
+#### Package Build
 
 1. Optional: tick **Rebuild Solution** to clean and rebuild the code first.
 2. **Build:** **Development** (default) or **Shipping**.
@@ -98,7 +98,7 @@ Use when Visual Studio or IntelliSense is confused.
 
    ![Package Build finished](Docs/32-package-done.png)
 
-### Upgrade Project Version
+#### Upgrade Project Version
 
 1. Commit or back up the project first. Assets saved in the newer engine can't be opened in the old one.
 2. **Engine version:** pick the engine to upgrade to (defaults to the newest installed). Older engines are blocked.
@@ -115,7 +115,7 @@ Use when Visual Studio or IntelliSense is confused.
 
 5. Open the project and check **Window > Message Log** for upgrade warnings.
 
-### Rename Project
+#### Rename Project
 
 1. Commit or back up the project first. The rename changes files in place.
 2. Rename on **one machine only**. Teammates get it from the commit.
@@ -149,7 +149,7 @@ Use when Visual Studio or IntelliSense is confused.
 
 ---
 
-## Messages you might see
+### Messages you might see
 
 | Message | What it means / what to do |
 |---|---|
@@ -173,7 +173,7 @@ Use when Visual Studio or IntelliSense is confused.
 
 ---
 
-## Limitations
+### Limitations
 
 - C++ projects only. Blueprint-only projects (no `Source` folder) aren't supported.
 - Windows only. Package Build makes Windows (Win64) builds only.
@@ -191,7 +191,7 @@ Use when Visual Studio or IntelliSense is confused.
 
 ---
 
-## Known Issues
+### Known Issues
 
 - A folder with several `.uproject` files uses the first one without asking.
 - Some project-wide editor warnings can still be blamed on whichever asset loads first, so that asset is skipped. Only the Gameplay Ability System's "No GameplayCueNotifyPaths" warning is filtered out.
