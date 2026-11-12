@@ -1,169 +1,197 @@
 # VFS Unreal Project Build Tool
 
-Builds, rebuilds and packages Unreal Engine **C++ projects** without opening the editor, and
-renames them safely, without breaking your Blueprints, levels or saved values.
+## Summary
 
-Renaming a C++ project by hand means renaming the `.uproject`, the modules, the
-`*.Target.cs` / `*.Build.cs` files, the `MYGAME_API` macros, config entries and class
-names. Then you have to stop every Blueprint and level that points at the old C++ names
-from breaking. **Rename Project** does all of that for you, and checks the result.
+- One app for Unreal Engine **C++ projects**. No editor needed for building or packaging.
+- Five actions:
+  - **Build Solution**: compiles the project.
+  - **Regenerate Visual Studio project files**: deletes the generated files, regenerates the project files, builds solution.
+  - **Package Build**: cooks and packages a Windows build.
+  - **Upgrade Project Version**: moves the project to a newer installed engine.
+  - **Rename Project**: renames the project without breaking Blueprints, levels or saved values.
 
 ---
 
-## What you need
+## Tools Required
 
-- **Windows 10 or 11**
-- **Unreal Engine 5** installed (Epic Games Launcher, or a registered source build)
-- **Visual Studio 2022 or 2026** (depending on Unreal version) with the **"Game development with C++"** workload
-  (this includes the C++ compiler and a Windows SDK)
+- A C++ Unreal Project.
+- Windows 10 or 11.
+- Unreal Engine 5 (Epic Games Launcher, or a registered source build).
+- Visual Studio 2022 or 2026 (depending on the Unreal version) with the **Game development with C++** workload.
+- `VFSUnrealProjectBuildTool.exe`. Nothing else to install.
+  - Windows may warn that the app is unrecognised (it isn't signed): click **More info → Run anyway**.
 
-There's nothing to install and nothing to build: **`VFSUnrealProjectBuildTool.exe` is all
-you need** (this README is optional). It contains everything else, uses Unreal's own Python
-behind the scenes, and runs on the .NET Framework that comes with Windows.
+---
 
-## Build, regenerate, package or upgrade
+## Steps for each action
 
-1. **Close the project** in Unreal Editor, Visual Studio and Rider. The tool checks this
-   and won't start while the project is open.
-2. Double-click **`VFSUnrealProjectBuildTool.exe`**.
-   Windows may warn about an unrecognised app, because the .exe isn't signed. Choose
-   **More info → Run anyway**.
-3. **Project (.uproject):** click **Browse...** and pick the project's `.uproject`, or drag
-   the `.uproject` (or its folder) onto the window.
-4. **Action:** pick **Build Solution**, **Regenerate Visual Studio project
-   files** (the default), **Package Build** or **Upgrade Project Version**. The app reopens on
-   the action you used last. Tick **Rebuild Solution** under it to clean and then build
-   everything (slower; use it when a normal build acts up).
-   **Regenerate Visual Studio project files** gives Visual Studio a clean start: it deletes
-   `.vs`, `Binaries`, `DerivedDataCache`, `Intermediate`, `.vsconfig` and the `.sln` /
-   `.slnx` files next to the `.uproject` (whichever exist), generates the Visual Studio
-   project files again, then builds. Use it when Visual Studio or IntelliSense gets confused,
-   or after switching engine versions. `Content`, `Source`, `Config` and `Saved` aren't
-   touched. For Package Build, also pick the **Build**
-   configuration: **Development** (the default) or **Shipping**. Content is always cooked;
-   by default only what changed is recooked (faster). Tick **Clean cook content** to delete
-   old cooked data and cook everything from scratch (slower, safest, e.g. after a rename).
-   **Build location** is where the packaged game is saved. It's filled in with the project's
-   `Builds` folder; click **Browse...** to choose another. **Package** stays greyed out while it's empty.
-   **Upgrade Project Version** moves the project to a newer installed engine. Pick it under
-   **Engine version** (it starts on the newest installed one; this row only shows for this
-   action). After you confirm, it switches the project's engine, deletes the same generated
-   files as Regenerate, generates the project files and builds with the new engine. Commit
-   first: once assets are saved in the newer engine, the old one can't open them. An older
-   engine is blocked. Every other action uses the project's current engine.
-5. **Visual Studio:** leave it as it is; the newest one that works with the engine is picked.
-6. **On Finish Success:** what happens once it worked: **Do nothing**, or **Open in Unreal
-   Editor when done** (the default for the other actions). Package Build adds **Launch .exe**
-   (its default), which starts the packaged game. Package Build keeps the editor closed.
-7. Click **Build** (it reads **Rebuild** when Rebuild Solution is ticked), **Regenerate**,
-   **Package** or **Upgrade**.
-8. **Wait for it to finish.** A sound plays at the start and the end, and a popup explains
-   anything that failed. You can press **Cancel** at any time; nothing is lost. When it's done,
-   **Open folder** opens the project, or the packaged build. The log ends with a **yellow
-   "CHECK IN UNREAL EDITOR" list**: the maps, assets or packaged game to open, and why, so you
-   can confirm everything works. For Package Build it's a short **"CONFIRM WORKING BUILD"** note
-   with just the packaged .exe to check.
+### Every action
 
-## Rename a project
+1. Close the project in Unreal Editor, Visual Studio and Rider.
+2. Open `VFSUnrealProjectBuildTool.exe`.
 
-1. **Commit or back up the project.** The rename changes files in place. Do the rename on
-   **one machine** only; your teammates pick it up from the commit (step 12).
-2. **Close the project** in Unreal Editor, Visual Studio and Rider. The tool checks this
-   and won't start while the project is open.
-3. Double-click **`VFSUnrealProjectBuildTool.exe`**.
-4. **Project (.uproject):** click **Browse...** and pick the project's `.uproject`, or drag
-   the `.uproject` (or its folder) onto the window. Then set **Action** to **Rename Project**.
-5. **New name:** type the new project name. It must start with a letter and use only
-   letters, digits and underscores, for example `SpaceRacer` or `Project_X2`. It can be
-   up to 20 characters long (Unreal's recommended limit).
-6. **Visual Studio:** the newest Visual Studio that works with the project's engine is picked
-   for you. Change it only if you need a specific version. (The rename keeps the project's
-   engine; use **Upgrade Project Version** separately to move to a newer one.)
-7. **On Finish Success:** **Open in Unreal Editor when done** (the default) or **Do nothing**.
-8. Click **Preview changes**. This changes nothing. It lists every file that will be
-   renamed or edited, the redirects that will be added, and any warnings. Read it.
-9. Click **Rename** and confirm.
-10. **Wait for it to finish.** The rename itself takes a few seconds. The app then
-    **builds the project, updates the assets and checks the plugins**, which can take
-    several minutes. You can press **Cancel** while it's building or checking. It's greyed
-    out at the moments when stopping could leave files half-written. If you cancel, the
-    project is already renamed; just build it in Visual Studio or Unreal to finish.
-    A short sound plays when the rename starts, and another when it ends: a rising chime
-    if everything worked, two low notes if something needs your attention. If it fails, a
-    popup says which step went wrong and whether anything was changed, with a **Save Output
-    Log** button. Cancelling never shows this popup.
-11. When it says **"Renamed and built. All steps finished."**, click **Open folder** or open
-    the new `.uproject`, and check the project works: the **yellow "CHECK IN UNREAL EDITOR"
-    list** at the end of the log says which assets and maps to open, and why (skipped or
-    warned assets, resaved maps, your start-up map). To keep a record of what happened (or
-    to share it when asking for help), click **Save Output Log** and choose where to save it.
-12. **Commit everything in one go**: renamed files, deleted old files, `DefaultEngine.ini`
-    and the resaved assets.
-    The app removes class and module redirects that no asset in **your** copy uses any
-    more. If **other branches** or unsynced machines have assets that still use the old
-    names, or you have **shipped save games**, add the removed lines back from your
-    previous commit before committing. The log lists what was removed.
-13. **Teammates** sync, delete their `Binaries/` and `Intermediate/` folders, and open the
-    new `.uproject`.
+   ![The app when it opens](Docs/01-open.png)
 
-## What Rename Action changes
+3. **Project (.uproject):** click **Browse...**, or drag the `.uproject` (or its folder) onto the window.
 
-| Changed | Not changed |
-|---|---|
-| The `.uproject` file name and its module list | The **project folder name** (it stays as it is) |
-| Files and folders under `Source/` that contain the old name | `Content/` folders and asset names (`/Game/...` paths) |
-| The old name inside source code, `*.Build.cs`, `*.Target.cs`, `Config/*.ini`, `MYGAME_API` macros | Engine and plugin names that happen to contain the old name |
-| Your project's plugins that **use** the game's code (their references to it) | Those plugins' own names and files |
-| The root `README` | Web links (a GitHub URL with the old name keeps working) |
-| `Binaries/`, `Intermediate/`, the old `.sln` / `.slnx` files and the `.vs` / `.idea` caches are deleted; the build files are made again | Anything else outside `Source/`, `Config/`, plugins and the root README |
+   ![A project picked](Docs/02-project.png)
 
-After renaming, it automatically:
+4. **Action:** pick one of the actions below and follow its steps.
 
-1. generates the Visual Studio project files.
-2. builds the editor.
-3. **resaves assets** that still use the old C++ names. Any asset that shows a warning
-   when loaded is **skipped, not saved**, so nothing is saved broken; the log lists them.
-4. removes redirects that no asset needs any more (see below).
-5. checks every enabled plugin still loads, and the assets that use it.
+   ![The Action list](Docs/03-action-list.png)
 
-## How your Blueprints keep working after Rename Action: redirects
+5. When it finishes, check everything in the yellow list at the end of the log.
 
-Blueprints, levels and other assets store the C++ names they use, such as
-`/Script/MyGame.MyCharacter` or a property called `MyGameHealth`. If those names just
-changed, the assets would silently lose values, connections and function calls.
+   ![A finished run with the yellow list](Docs/12-build-done.png)
 
-So the tool adds a `[CoreRedirects]` section to `Config/DefaultEngine.ini`. It tells
-Unreal, for example, "`MyGameHealth` is now `NewNameHealth`". Redirects are added for the
-module, classes, structs, enums and their values, properties, functions and event
-dispatchers that had the old name in them.
+- **Visual Studio** is picked for you. Change it only if you need a specific version.
+- **Cancel** stops a run. For builds and packaging nothing is lost.
+- **Save Output Log** saves the log as a `.txt` (useful when asking for help).
+- **Open folder** opens the project folder, or the packaged build after Package Build.
 
-- **Keep those lines** in `DefaultEngine.ini` and commit them with the rename.
-- Redirects for **classes and modules** are removed again once every asset in the project
-  has been resaved with the new names. Redirects for **properties and functions** are always
-  kept, because Blueprint nodes can still refer to the old names.
+### Build Solution
+
+1. Optional: tick **Rebuild Solution** to clean and build everything from scratch (slower; use it when a normal build acts up). Hover over it for an explanation.
+
+   ![Build Solution](Docs/10-build.png)
+
+   ![Rebuild Solution tooltip](Docs/11-build-rebuild-tooltip.png)
+
+2. **On Finish Success:** **Open in Unreal Editor when done** (default) or **Do nothing**.
+3. Click **Build** (it says **Rebuild** when Rebuild Solution is ticked).
+4. Check the yellow list: open your start-up map and press Play.
+
+   ![Build Solution finished](Docs/12-build-done.png)
+
+### Regenerate Visual Studio project files
+
+Use when Visual Studio or IntelliSense is confused.
+
+1. **On Finish Success:** **Open in Unreal Editor when done** (default) or **Do nothing**.
+
+   ![Regenerate Visual Studio project files](Docs/20-regenerate.png)
+
+2. Click **Regenerate**. It:
+   - Deletes `.vs`, `Binaries`, `DerivedDataCache`, `Intermediate`, `.vsconfig`, `*.sln`, `*.slnx` (whichever exist).
+   - Regenerates the Visual Studio project files.
+   - Builds the project.
+3. Check the yellow list: open your start-up map and press Play.
+
+- `Content`, `Source`, `Config` and `Saved` aren't touched.
+- The next editor launch and the next cook are slower once (the deleted cache is rebuilt).
+
+### Package Build
+
+1. Optional: tick **Rebuild Solution** to clean and rebuild the code first.
+2. **Build:** **Development** (default) or **Shipping**.
+3. Optional: tick **Clean cook content** to delete old cooked data and cook everything (slower; safest after a rename). Unticked, only changed content is recooked. Hover over it for an explanation.
+
+   ![Clean cook content tooltip](Docs/31-package-clean-cook-tooltip.png)
+
+4. **Build location:** defaults to `<project>\Builds`. Click **Browse...** to change it. Package is greyed out while it's empty.
+5. **On Finish Success:** **Launch .exe** (default), **Open in Unreal Editor when done**, or **Do nothing**.
+
+   ![Package Build](Docs/30-package.png)
+
+6. Click **Package**.
+7. Check the game in **CONFIRM WORKING BUILD** at the end of the log: it opens, loads the first level and plays.
+
+   ![Package Build finished](Docs/32-package-done.png)
+
+### Upgrade Project Version
+
+1. Commit or back up the project first. Assets saved in the newer engine can't be opened in the old one.
+2. **Engine version:** pick the engine to upgrade to (defaults to the newest installed). Older engines are blocked.
+3. **On Finish Success:** **Open in Unreal Editor when done** (default) or **Do nothing**.
+
+   ![Upgrade Project Version](Docs/40-upgrade.png)
+
+4. Click **Upgrade** and confirm. It:
+   - Switches the project's engine.
+   - Deletes the same files as Regenerate.
+   - Regenerates the project files and builds with the new engine.
+
+   ![Upgrade confirmation](Docs/41-upgrade-confirm.png)
+
+5. Open the project and check **Window > Message Log** for upgrade warnings.
+
+### Rename Project
+
+1. Commit or back up the project first. The rename changes files in place.
+2. Rename on **one machine only**. Teammates get it from the commit.
+3. **New name:** letters, digits and underscores, starting with a letter, up to 20 characters (e.g. `SpaceRacer`). Not allowed: Windows reserved names (`CON`, `NUL`, `COM1`…), C++ keywords (`class`, `int`…), or only changing the capitalisation.
+4. **On Finish Success:** **Open in Unreal Editor when done** (default) or **Do nothing**.
+
+   ![Rename Project](Docs/50-rename.png)
+
+5. Click **Preview changes** and read the list. Nothing is changed yet.
+
+   ![Rename preview](Docs/51-rename-preview.png)
+
+6. Click **Rename** and confirm. It:
+   - Renames the `.uproject`, modules, source files, `_API` macros and config entries.
+   - Adds `[CoreRedirects]` to `Config/DefaultEngine.ini` so assets find the renamed C++ names.
+   - Regenerates the project files and builds.
+   - Resaves assets that use the old names (assets that load with warnings are **skipped**, never saved broken).
+   - Removes redirects no asset needs any more.
+   - Checks every plugin still loads.
+
+   ![Rename confirmation](Docs/52-rename-confirm.png)
+
+7. Check everything in the yellow list. Open each **SKIPPED** asset, fix its warning, and save it.
+
+   ![Rename finished](Docs/53-rename-done.png)
+
+8. Commit everything in one go: renamed files, deleted old files, `DefaultEngine.ini`, resaved assets.
+   - Keep the `[CoreRedirects]` lines.
+   - If other branches or shipped save games still use the old names, add back any redirect lines the log says were removed.
+9. Teammates: sync, delete `Binaries` and `Intermediate`, open the new `.uproject`.
+
+---
 
 ## Messages you might see
 
 | Message | What it means / what to do |
 |---|---|
 | **"... is open in Unreal Editor / Visual Studio / Rider"** | Close the project there, then click **Check again**. |
+| **Note under Visual Studio** (main button greyed out) | This Visual Studio, its C++ compiler or the Windows SDK isn't one the engine accepts. The note says what to install or update in the Visual Studio Installer. |
+| **"This project's engine ... isn't installed on this PC"** | Install that engine, or use **Upgrade Project Version** to move the project to an installed one. |
+| **Build failed / Package failed / Regenerate failed** (popup) | The popup says which step failed (project files, build, cook or packaging). Look for `error` lines in the log, or click **Save Output Log** to share it. |
+| **"warning: couldn't delete ..."** (Regenerate, Upgrade) | A file is in use. Close Visual Studio, Rider and the editor, then run it again. |
+| **"Choose a Build location for the packaged game"** (Package greyed out) | Build location is empty. Click **Browse...** and pick a folder. |
+| **"Pick the engine version to upgrade to"** (Upgrade greyed out) | No newer engine is installed, or the project already uses the selected one. |
 | **Engine downgrade blocked** | You picked an older engine than the project uses. Assets saved by a newer engine can't be opened by an older one, so this is refused. Pick the same or a newer engine. |
-| **Common project name** | The old name is a common word (like `Game` or `Character`) that is also part of engine names. To be safe, only the project's **own** names are renamed: modules, files, its classes, properties and functions. Local variables, comments and text that contain the word stay as they are. Click **Rename anyway** to continue, or **Cancel**. |
-| **"... would clash with ... from the engine or a plugin"** | The new name would collide with something that already exists (for example `Water` or `Engine`). Pick another name. Nothing was changed. |
-| **"... paths of N characters"** | The renamed files would be too deep for Windows' 260-character path limit. Move the project to a shorter folder (e.g. `C:\Projects\`) or use a shorter name. |
-| **Note under Visual Studio** (Rename greyed out) | This Visual Studio, its C++ compiler or the Windows SDK isn't one the chosen engine accepts, or the project's engine isn't installed. The note says what to install or update in the Visual Studio Installer. **Preview** still works. |
-| **"Plugin '...' contains the old name; it is NOT renamed"** | Information only. Plugins aren't renamed, so their names are left alone. |
-| **"Renamed, but a follow-up step needs attention"** | The rename worked, but the build, resave or plugin check reported a problem. Scroll the log to see which one. |
-| **SKIPPED `<asset>` (loaded with warnings)** | That asset already had a problem before the rename, so it wasn't resaved. Open it in the editor, fix it and save it. It still loads through the redirects. |
+| **Common project name** (Rename) | The old name is a common word (like `Game` or `Character`) that's also in engine names. To be safe, only the project's **own** names are renamed: modules, files, its classes, properties and functions. Local variables, comments and text that contain the word stay as they are. Click **Rename anyway** to continue, or **Cancel**. |
+| **"... is a reserved name in Windows" / "... is a C++ keyword" / "Only the capitalisation changes"** (Rename greyed out) | The new name can't work: Windows won't create files called `CON`, `NUL`, `COM1` and so on; C++ keywords like `class` break the build; and Windows treats `MyGame` and `mygame` as the same file name. Pick a different name. |
+| **"... would clash with ... from the engine or a plugin"** (Rename) | The new name would collide with something that already exists (for example `Water` or `Engine`). Pick another name. Nothing was changed. |
+| **"... paths of N characters"** (Rename) | The renamed files would be too deep for Windows' 260-character path limit. Move the project to a shorter folder (e.g. `C:\Projects\`) or use a shorter name. |
+| **"Plugin '...' contains the old name; it is NOT renamed"** (Rename) | Information only. Plugins aren't renamed, so their names are left alone. |
+| **"Renamed, but a follow-up step needs attention"** (Rename) | The rename worked, but the build, asset resave or plugin check reported a problem. The popup and the yellow list say which. |
+| **SKIPPED `<asset>` (loaded with warnings)** (Rename) | That asset already had a problem (shown on the `why:` line), so it wasn't resaved. It still works through the redirects. Open it in the editor, fix the warning and save it. |
+| **saved `<asset>` (with warnings ...)** (Rename) | The asset was resaved, but something was logged (shown on the `why:` line). Open it and check it looks right. |
+| **WARN `<plugin>`** (Rename, plugin check) | The plugin loads, but some assets that use it log warnings when loaded (listed below it). Usually old issues; check them in the editor. |
+
+---
 
 ## Limitations
 
-- **Blueprint-only projects** (no `Source/` folder) aren't supported. There's nothing to
-  rename in code; rename those through Unreal's own tools.
-- There's **no automatic backup** and no undo. That's why committing first matters.
-- Projects inside **OneDrive** or other synced folders can have files locked during the
-  rename. Pause syncing first.
-- Other files that mention the old name aren't updated: build scripts, CI workflows,
-  `.gitignore`, and docs other than the root README. Neither are other spellings of it,
-  such as `mygame`.
-- Content folders named after the project (`/Game/MyGame/...`) aren't renamed.
+- C++ projects only. Blueprint-only projects (no `Source` folder) aren't supported.
+- Windows only. Package Build makes Windows (Win64) builds only.
+- No automatic backup or undo. Commit before Rename or Upgrade.
+- Projects in OneDrive or other synced folders can have files locked mid-run. Pause syncing first.
+- Rename doesn't change:
+  - The project folder name.
+  - `Content` folders and asset names (`/Game/...` paths), including folders named after the project.
+  - Engine and plugin names, or your plugins' own names.
+  - Other files that mention the old name (build scripts, CI workflows, `.gitignore`, docs other than the root README).
+  - Other spellings of the name (e.g. `mygame`).
+- Rename removes class and module redirects that no asset in **your** copy uses. Other branches, unsynced machines or shipped save games may still need them (add them back from your previous commit).
+- Common names (like `Game`) only rename the project's own names; local variables and comments keep the word.
+- Regenerate and Upgrade delete `DerivedDataCache`, so the next editor launch and cook are slower.
+
+---
+
+## Known Issues
+
+- A folder with several `.uproject` files uses the first one without asking.
+- Some project-wide editor warnings can still be blamed on whichever asset loads first, so that asset is skipped. Only the Gameplay Ability System's "No GameplayCueNotifyPaths" warning is filtered out.

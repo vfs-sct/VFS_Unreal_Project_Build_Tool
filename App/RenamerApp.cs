@@ -29,7 +29,7 @@ namespace UnrealProjectRenamer
     static class Program
     {
         // App version: bump this for every build you hand out (major.minor.patch).
-        public const string Version = "0.17.1";
+        public const string Version = "0.18.0";
 
         [DllImport("user32.dll")]
         static extern bool SetProcessDPIAware();
@@ -694,6 +694,33 @@ namespace UnrealProjectRenamer
     class MainForm : Form
     {
         static readonly Regex ValidName = new Regex("^[A-Za-z][A-Za-z0-9_]*$");
+
+        // Names that pass ValidName but still break a rename (keep in step with the script's new_name_problem).
+        static readonly HashSet<string> WindowsReserved = new HashSet<string>(
+            new[] { "CON", "PRN", "AUX", "NUL" }
+                .Concat(Enumerable.Range(1, 9).Select(i => "COM" + i))
+                .Concat(Enumerable.Range(1, 9).Select(i => "LPT" + i)), StringComparer.OrdinalIgnoreCase);
+        static readonly HashSet<string> CppKeywords = new HashSet<string>((
+            "alignas alignof and and_eq asm auto bitand bitor bool break case catch char char8_t char16_t char32_t class " +
+            "compl concept const consteval constexpr constinit const_cast continue co_await co_return co_yield decltype " +
+            "default delete do double dynamic_cast else enum explicit export extern false float for friend goto if inline " +
+            "int long mutable namespace new noexcept not not_eq nullptr operator or or_eq private protected public register " +
+            "reinterpret_cast requires return short signed sizeof static static_assert static_cast struct switch template " +
+            "this thread_local throw true try typedef typeid typename union unsigned using virtual void volatile wchar_t " +
+            "while xor xor_eq").Split(' '), StringComparer.Ordinal); // C++ is case-sensitive: "Class" is fine
+
+        /// <summary>Why a well-formed new name still can't be used, or null.</summary>
+        static string NewNameProblem(string name, string old)
+        {
+            if (WindowsReserved.Contains(name))
+                return "\"" + name + "\" is a reserved name in Windows (files can't be called that). Pick another name.";
+            if (CppKeywords.Contains(name))
+                return "\"" + name + "\" is a C++ keyword, so the project wouldn't build. Pick another name.";
+            if (old.Length > 0 && string.Equals(name, old, StringComparison.OrdinalIgnoreCase) && name != old)
+                return "Only the capitalisation changes. Windows treats \"" + name + "\" and \"" + old +
+                       "\" as the same file name, so it can't be renamed safely. Pick a different name.";
+            return null;
+        }
         const string KeepEngine = "Keep current";
 
         readonly TextBox projectBox = new TextBox();
@@ -1455,6 +1482,7 @@ namespace UnrealProjectRenamer
             else if (rename && nameBox.Text.Length == 0) problem = "Type the new project name.";
             else if (rename && !ValidName.IsMatch(nameBox.Text)) problem = "The name must start with a letter and use only letters, digits and underscores.";
             else if (rename && nameBox.Text == old) problem = "The new name is the same as the current one.";
+            else if (rename && NewNameProblem(nameBox.Text, old) != null) problem = NewNameProblem(nameBox.Text, old);
             else if (act == Act.Upgrade && engineBox.SelectedIndex <= 0)
                 problem = "Pick the engine version to upgrade to (no newer engine is installed, or Keep current is selected).";
             else if (act == Act.Upgrade && (string)engineBox.SelectedItem == "UE " + currentAssociation)

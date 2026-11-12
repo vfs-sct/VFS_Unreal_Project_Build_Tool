@@ -59,6 +59,29 @@ RISKY_NAMES = {
 }
 
 IDENT_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_]*$")
+
+# Names that pass IDENT_RE but still break a rename (keep in step with the app's NewNameProblem).
+WINDOWS_RESERVED = {"CON", "PRN", "AUX", "NUL"} | {f"COM{i}" for i in range(1, 10)} | {f"LPT{i}" for i in range(1, 10)}
+CPP_KEYWORDS = set("""
+alignas alignof and and_eq asm auto bitand bitor bool break case catch char char8_t char16_t char32_t class compl
+concept const consteval constexpr constinit const_cast continue co_await co_return co_yield decltype default delete do
+double dynamic_cast else enum explicit export extern false float for friend goto if inline int long mutable namespace
+new noexcept not not_eq nullptr operator or or_eq private protected public register reinterpret_cast requires return
+short signed sizeof static static_assert static_cast struct switch template this thread_local throw true try typedef
+typeid typename union unsigned using virtual void volatile wchar_t while xor xor_eq
+""".split())
+
+
+def new_name_problem(new: str, old: str) -> str | None:
+    """Why `new` can't be used even though it's letters, digits and underscores, or None."""
+    if new.upper() in WINDOWS_RESERVED:
+        return f"'{new}' is a reserved name in Windows; files called {new}.uproject can't be created. Pick another name."
+    if new in CPP_KEYWORDS:
+        return f"'{new}' is a C++ keyword; the project name is used in C++ code, so the build would fail. Pick another name."
+    if new.lower() == old.lower() and new != old:
+        return (f"'{new}' only changes the capitalisation of '{old}'. Windows treats both as the same file name, so the "
+                "rename can't be done safely. Pick a different name.")
+    return None
 IDENT_TOKEN_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 # Text that is never renamed: /Game/... asset paths (Content/ isn't renamed) and web links.
 PROTECT_RE = re.compile(r"/Game/[^\s\"'(),;\]\[]*|https?://[^\s\"'<>()\]\[]+|\bTargetType\.[A-Za-z]+")
@@ -1550,6 +1573,9 @@ def main() -> int:
         sys.exit(f"error: '{new}' is not a valid project name (use letters, digits and underscores; start with a letter)")
     if new == old:
         sys.exit("error: the new name is the same as the old one")
+    problem = new_name_problem(new, old)
+    if problem:
+        sys.exit(f"error: {problem} Nothing was changed.")
     if len(new) > 20:
         print(f"warning: '{new}' is longer than 20 characters; Unreal recommends shorter project names")
 

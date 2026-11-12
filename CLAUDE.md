@@ -237,6 +237,10 @@ The user asked for these specifically — keep them:
   hint while empty (`EM_SETCUEBANNER`; needs visual styles, which `Main` enables). While a preview or rename runs,
   `SetInputsLocked` greys out Project, Browse, New name, Engine version, Visual Studio and
   the On Finish Success dropdown, and ignores dropped projects (added 6 Nov, tested in-process).
+  Also refused (12 Nov), in the app (`NewNameProblem`: Preview/Rename greyed, reason in the status
+  line) and the script (`new_name_problem`: exit 1, "Nothing was changed"): Windows reserved names
+  (CON, PRN, AUX, NUL, COM1-9, LPT1-9; any case), C++ keywords (exact case, so `Class` is allowed),
+  and case-only changes (`Hail` -> `hail`). Keep the two lists in step. Tested both sides.
 - **Sounds** (`Sfx`, added 6 Nov): synthesized in code as in-memory .wav (no sound files),
   played with `SoundPlayer` through the `MainForm.PlaySound` hook. Start = real rename begins
   (not Preview, not the common-name re-run); Success = "Renamed and built"; Failure = not
