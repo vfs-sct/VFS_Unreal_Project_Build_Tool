@@ -4,6 +4,12 @@
 
 ---
 
+### 0.20.1
+
+- The Development / Shipping description under the Build dropdown is gold, so it stands out.
+
+---
+
 ### 0.20.0
 
 - Each action has a short grey description under the Action dropdown explaining what it does.

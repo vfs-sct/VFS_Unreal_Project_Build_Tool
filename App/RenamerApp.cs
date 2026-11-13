@@ -29,7 +29,7 @@ namespace UnrealProjectRenamer
     static class Program
     {
         // App version: bump this for every build you hand out (major.minor.patch).
-        public const string Version = "0.20.0";
+        public const string Version = "0.20.1";
 
         [DllImport("user32.dll")]
         static extern bool SetProcessDPIAware();
@@ -1089,7 +1089,7 @@ namespace UnrealProjectRenamer
             "For testing purposes; keeps the console, logging, visible draw traces, debug tools.",
             "For public consumption; fastest, with no console, logging, visible draw traces, or debug tools.",
         };
-        readonly Label buildConfigNote = new Label { AutoSize = true, ForeColor = Theme.Muted, MaximumSize = new Size(620, 0),
+        readonly Label buildConfigNote = new Label { AutoSize = true, ForeColor = Theme.Warn, MaximumSize = new Size(620, 0),
                                                       Text = BuildConfigDescriptions[0] };
         readonly CheckBox cookContentBox = new DarkCheck { Text = "Clean cook content", AutoSize = true, Checked = false };
         readonly Label cookContentNote = new Label { AutoSize = true, ForeColor = Theme.Muted, MaximumSize = new Size(620, 0),
