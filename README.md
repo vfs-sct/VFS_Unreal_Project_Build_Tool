@@ -4,6 +4,7 @@
 
 - [Summary](#summary)
 - [Tools Required](#tools-required)
+- [How To Install](#how-to-install)
 - [Steps for each action](#steps-for-each-action)
   - [Every action](#every-action)
   - [Build Solution](#build-solution)
@@ -27,7 +28,8 @@
   - **Package Build**: cooks and packages a Windows build.
   - **Upgrade Project Version**: moves the project to a newer installed engine.
   - **Rename Project**: renames the project without breaking Blueprints, levels or saved values.
-- **Updates itself.** On opening, it checks GitHub for a newer version. If there is one, a small window shows the download progress, then the new version opens. Offline (or if GitHub can't be reached) it simply opens the version you have.
+- **Updates itself.** On opening, it checks GitHub for a newer version. If there is one, a small window shows the download progress, then the new version opens.
+  - Works offline: with no connection it opens the version you have.
 
 ---
 
@@ -37,8 +39,17 @@
 - Windows 10 or 11.
 - Unreal Engine 5 (Epic Games Launcher, or a registered source build).
 - Visual Studio 2022 or 2026 (depending on the Unreal version) with the **Game development with C++** workload.
-- `VFSUnrealProjectBuildTool.exe`. Nothing else to install.
-  - Windows may warn that the app is unrecognised (it isn't signed): click **More info → Run anyway**.
+- `VFSUnrealProjectBuildTool.exe` (see [How To Install](#how-to-install)).
+
+---
+
+### How To Install
+
+1. Download [VFSUnrealProjectBuildTool.exe](https://github.com/vfs-sct/VFS_Unreal_Project_Build_Tool/raw/main/VFSUnrealProjectBuildTool.exe).
+2. Put it in a folder you own, for example `Documents\Tools`. Not `Program Files`: the app can't update itself there.
+3. Double-click it to open it. Nothing else to install.
+   - Windows may warn that the app is unrecognised (it isn't signed): click **More info → Run anyway**.
+4. From now on it updates itself when you open it.
 
 ---
 
@@ -200,6 +211,7 @@ Use when Visual Studio or IntelliSense is confused.
 
 - C++ projects only. Blueprint-only projects (no `Source` folder) aren't supported.
 - Windows only. Package Build makes Windows (Win64) builds only.
+- The app can't update itself from a folder you can't write to (e.g. `Program Files`); keep it in a folder you own.
 - No automatic backup or undo. Commit before Rename or Upgrade.
 - Projects in OneDrive or other synced folders can have files locked mid-run. Pause syncing first.
 - Rename doesn't change:
