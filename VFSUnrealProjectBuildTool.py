@@ -801,6 +801,22 @@ def read_association(uproject: Path) -> str:
     return json.loads(text).get("EngineAssociation", "")
 
 
+def launcher_list_engines() -> dict[str, Path]:
+    """Engines in the Epic launcher's own install list (ProgramData LauncherInstalled.dat):
+    version -> folder. The launcher doesn't always write the registry key, so this is the fallback."""
+    dat = Path(os.environ.get("ProgramData", r"C:\ProgramData")) / "Epic" / "UnrealEngineLauncher" / "LauncherInstalled.dat"
+    found: dict[str, Path] = {}
+    try:
+        for e in json.loads(dat.read_text(encoding="utf-8")).get("InstallationList", []):
+            m = re.match(r"^UE_(\d+\.\d+)$", str(e.get("AppName", "")))
+            loc = e.get("InstallLocation")
+            if m and loc and (Path(loc) / "Engine").is_dir():
+                found.setdefault(m.group(1), Path(loc))
+    except (OSError, ValueError, AttributeError):
+        pass
+    return found
+
+
 def installed_launcher_engines() -> list[str]:
     """Launcher engine versions registered on this PC, e.g. ['5.7', '5.8']."""
     if sys.platform != "win32":
@@ -818,6 +834,7 @@ def installed_launcher_engines() -> list[str]:
                 i += 1
     except OSError:
         pass
+    versions += [v for v in launcher_list_engines() if v not in versions]
     return sorted(versions, key=lambda v: [int(p) if p.isdigit() else p for p in v.split(".")])
 
 
@@ -852,6 +869,8 @@ def engine_dir_for_association(assoc: str) -> Path | None:
                 return Path(winreg.QueryValueEx(k, "InstalledDirectory")[0])
         except OSError:
             pass
+        if assoc in (found := launcher_list_engines()):
+            return found[assoc]
         # Source builds: HKCU\SOFTWARE\Epic Games\Unreal Engine\Builds\{GUID} = path
         try:
             with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"SOFTWARE\Epic Games\Unreal Engine\Builds") as k:
@@ -948,7 +967,59 @@ def build_project(engine_dir: Path, uproject: Path, vs: VisualStudio | None = No
         if vs.msvc:
             cmd.append(f"-CompilerVersion={vs.msvc}")
     print("  " + " ".join(f'"{c}"' if " " in c else c for c in cmd))
-    return subprocess.call(cmd) == 0
+    # Pass the output through as it comes, and keep the compile errors to say where they are afterwards.
+    BUILD_ERRORS.clear()
+    sys.stdout.flush()
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                            text=True, encoding="utf-8", errors="replace", bufsize=1)
+    for line in proc.stdout:
+        print(line, end="", flush=True)
+        m = _COMPILE_ERROR_RE.match(line.strip())
+        if m:
+            BUILD_ERRORS.append((m.group(1), line.strip()))
+    return proc.wait() == 0
+
+
+# Compile errors: MSVC / UHT "file(12,5): error C1234: ..." and clang "file:12:5: error: ...".
+_COMPILE_ERROR_RE = re.compile(r"^(.+?)(?:\(\d+(?:,\d+)?\)\s*|:\d+:\d+):\s*(?:fatal\s+)?error\b", re.I)
+BUILD_ERRORS: list[tuple[str, str]] = []  # (file, error line) from the last build_project
+
+
+def build_error_places(root: Path) -> tuple[dict[str, int], int]:
+    """Where the last build's errors are: ({project plugin name: distinct errors}, errors in Source/)."""
+    plugins: dict[str, int] = {}
+    own = 0
+    root = root.resolve()
+    for file, line in dict.fromkeys(BUILD_ERRORS):  # the same error is often printed twice
+        try:
+            f = Path(file).resolve()
+        except (OSError, ValueError):
+            continue
+        if root / "Plugins" in f.parents:
+            d = f.parent
+            while d != root and not any(d.glob("*.uplugin")):
+                d = d.parent
+            name = next(d.glob("*.uplugin")).stem if d != root else f.relative_to(root / "Plugins").parts[0]
+            plugins[name] = plugins.get(name, 0) + 1
+        elif root / "Source" in f.parents:
+            own += 1
+    return plugins, own
+
+
+def report_build_errors(uproject: Path) -> list[str]:
+    """After a failed build: which project plugins (and whether the project's own code) the errors are in."""
+    plugins, own = build_error_places(uproject.parent)
+    ver = engine_version(read_association(uproject))
+    engine = f"UE {ver[0]}.{ver[1]}" if ver else "this engine"
+    for name, n in sorted(plugins.items()):
+        print(f"  errors in plugin: {name} ({n} error{'s' if n != 1 else ''})")
+    if own:
+        print(f"  errors in the project's own code (Source/): {own}")
+    if plugins:
+        print(f"  The plugin{'s' if len(plugins) > 1 else ''} above may not support {engine} yet: get "
+              f"{'their' if len(plugins) > 1 else 'its'} version for {engine} (or newer) and replace "
+              f"{'them' if len(plugins) > 1 else 'it'} in Plugins/, then run this again.")
+    return sorted(plugins)
 
 
 def content_mounts(root: Path) -> list[tuple[Path, str]]:
@@ -1436,6 +1507,63 @@ def open_in_editor(engine_dir: Path, uproject: Path) -> None:
     subprocess.Popen([str(exe), str(uproject)], creationflags=flags, close_fds=True)
 
 
+def latest_target_settings(engine_dir: Path | None) -> dict[str, str]:
+    """The engine's newest target settings, read from UBT's TargetRules.cs:
+    {'BuildSettingsVersion': 'V7', 'EngineIncludeOrderVersion': 'Unreal5_8'} (what new 5.8 projects use)."""
+    found: dict[str, str] = {}
+    if not engine_dir:
+        return found
+    rules = engine_dir / "Engine" / "Source" / "Programs" / "UnrealBuildTool" / "Configuration" / "Rules" / "TargetRules.cs"
+    try:
+        text = rules.read_text(encoding="utf-8-sig", errors="replace")
+    except OSError:
+        return found
+    for enum in ("BuildSettingsVersion", "EngineIncludeOrderVersion"):
+        m = re.search(r"\benum\s+" + enum + r"\b[^{]*\{(.*?)\}", text, re.S)
+        latest = m and re.search(r"\bLatest\s*=\s*(\w+)", m.group(1))
+        if latest:
+            found[enum] = latest.group(1)
+    return found
+
+
+def _setting_order(value: str) -> tuple[int, ...] | None:
+    """Sortable form of 'V6' / 'Unreal5_7'; None for 'Latest' or anything unknown."""
+    m = re.fullmatch(r"V(\d+)|Unreal(\d+)_(\d+)", value)
+    return tuple(int(g) for g in m.groups() if g is not None) if m else None
+
+
+def upgrade_target_files(uproject: Path, engine_dir: Path | None) -> list[str]:
+    """Moves DefaultBuildSettings / IncludeOrderVersion in the project's Source/*.Target.cs files up to
+    the new engine's latest values (older values only; 'Latest' and newer ones are left alone).
+    Returns 'file: old -> new' lines for what changed."""
+    latest = latest_target_settings(engine_dir)
+    changes: list[str] = []
+    if not latest:
+        print("  note: couldn't read this engine's latest build settings; *.Target.cs files left as they are")
+        return changes
+    source = uproject.parent / "Source"
+    for target in sorted(source.glob("*.Target.cs")) if source.is_dir() else []:
+        got = read_text(target)
+        if not got:
+            continue
+        text, enc = got
+
+        def bump(m, enum):
+            old, new = m.group(2), latest.get(enum)
+            o, n = _setting_order(old), _setting_order(new or "")
+            if not new or o is None or n is None or o >= n:
+                return m.group(0)
+            changes.append(f"{target.name}: {enum}.{old} -> {enum}.{new}")
+            return m.group(1) + new
+
+        new_text = text
+        for enum in ("BuildSettingsVersion", "EngineIncludeOrderVersion"):
+            new_text = re.sub(r"(\b" + enum + r"\s*\.\s*)(\w+)", lambda m, e=enum: bump(m, e), new_text)
+        if new_text != text:
+            write_text(target, new_text, enc)
+    return changes
+
+
 def run_action(args, uproject: Path) -> int:
     """--action build/rebuild/package: no rename, just the follow-up steps on the project as it is.
     Returns 0, 1 if refused before anything ran, or 2 if a step failed."""
@@ -1471,6 +1599,13 @@ def run_action(args, uproject: Path) -> int:
             new_text = text.replace("{", '{\n\t"EngineAssociation": "' + args.engine_association + '",', 1)
         write_text(uproject, new_text, enc)
         print(f"  engine: {old_assoc or '(none)'} -> {args.engine_association}")
+        if args.action == "upgrade":
+            changes = upgrade_target_files(uproject, engine_dir_for_association(args.engine_association))
+            for c in changes:
+                print(f"  {c}")
+            if any("BuildSettingsVersion" in c for c in changes):
+                print("  (newer build settings are stricter, e.g. missing return values and unreachable code are "
+                      "errors; if the build fails on those, fix the code it points to)")
     else:
         print(f"  engine: {old_assoc or '(none)'}")
     if args.action == "package" and not (args.package or args.cook):
@@ -1731,6 +1866,7 @@ def after_rename(args, new_uproject: Path) -> int:
 
     failed = False
     generated = built = resaved_ok = False
+    bad_plugins: list[str] = []
     skipped: list[str] = []
 
     vs = None
@@ -1762,6 +1898,7 @@ def after_rename(args, new_uproject: Path) -> int:
         if not built:
             print("  build FAILED (see output above); skipping the steps that need it")
             failed = True
+            bad_plugins = report_build_errors(new_uproject)
 
     if args.resave_assets and built:
         print("\nResaving assets that still store old names...")
@@ -1825,7 +1962,12 @@ def after_rename(args, new_uproject: Path) -> int:
     todo = []
     if not args.generate_project_files:
         todo.append("Right-click the new .uproject -> 'Generate Visual Studio project files'")
-    if not built:
+    if bad_plugins:
+        ver = engine_version(read_association(new_uproject))
+        engine_name = f"UE {ver[0]}.{ver[1]}" if ver else "this engine"
+        todo.append(f"Replace {', '.join(bad_plugins)} in Plugins/ with {'their' if len(bad_plugins) > 1 else 'its'} "
+                    f"version for {engine_name}, then build again")
+    elif not built:
         todo.append("Build the project (or open the .uproject and let Unreal build it)")
     if packaged_ok is False:
         todo.append(f"Fix the {'packaging' if args.package else 'cook'} errors above, then try again "

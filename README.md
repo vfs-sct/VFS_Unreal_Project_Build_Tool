@@ -1,4 +1,4 @@
-# VFS Unreal Project Build Tool v0.18.1
+# VFS Unreal Project Build Tool v0.19.0
 
 ### Summary
 
@@ -9,6 +9,7 @@
   - **Package Build**: cooks and packages a Windows build.
   - **Upgrade Project Version**: moves the project to a newer installed engine.
   - **Rename Project**: renames the project without breaking Blueprints, levels or saved values.
+- **Updates itself.** On opening, it checks GitHub for a newer version. If there is one, a small window shows the download progress, then the new version opens. Offline (or if GitHub can't be reached) it simply opens the version you have.
 
 ---
 
@@ -107,7 +108,8 @@ Use when Visual Studio or IntelliSense is confused.
    ![Upgrade Project Version](Docs/40-upgrade.png)
 
 4. Click **Upgrade** and confirm. It:
-   - Switches the project's engine.
+   - Switches the project's engine (works even if the project's current engine isn't installed).
+   - Updates `DefaultBuildSettings` and `IncludeOrderVersion` in `Source/*.Target.cs` to the new engine's latest.
    - Deletes the same files as Regenerate.
    - Regenerates the project files and builds with the new engine.
 
@@ -156,6 +158,9 @@ Use when Visual Studio or IntelliSense is confused.
 | **"... is open in Unreal Editor / Visual Studio / Rider"** | Close the project there, then click **Check again**. |
 | **Note under Visual Studio** (main button greyed out) | This Visual Studio, its C++ compiler or the Windows SDK isn't one the engine accepts. The note says what to install or update in the Visual Studio Installer. |
 | **"This project's engine ... isn't installed on this PC"** | Install that engine, or use **Upgrade Project Version** to move the project to an installed one. |
+| **"errors in plugin: ..."** (after a failed build) | That project plugin doesn't compile with this engine, usually because it's built for an older one (common after an upgrade, e.g. FMOD). Get the plugin's version for your engine, replace its folder in `Plugins`, and run again. |
+| **"Checking for updates..." / "Updating to v..."** (on opening) | The app is checking for or installing a newer version; the new version opens by itself. Close that window to skip the update this time. |
+| **Update failed** (on opening) | The new version couldn't be installed, usually because the app's folder can't be written to (e.g. `Program Files`). Move the app to a folder you own, like Documents, or download it from GitHub. The current version still opens. |
 | **Build failed / Package failed / Regenerate failed** (popup) | The popup says which step failed (project files, build, cook or packaging). Look for `error` lines in the log, or click **Save Output Log** to share it. |
 | **"warning: couldn't delete ..."** (Regenerate, Upgrade) | A file is in use. Close Visual Studio, Rider and the editor, then run it again. |
 | **"Choose a Build location for the packaged game"** (Package greyed out) | Build location is empty. Click **Browse...** and pick a folder. |
@@ -188,6 +193,12 @@ Use when Visual Studio or IntelliSense is confused.
 - Rename removes class and module redirects that no asset in **your** copy uses. Other branches, unsynced machines or shipped save games may still need them (add them back from your previous commit).
 - Common names (like `Game`) only rename the project's own names; local variables and comments keep the word.
 - Regenerate and Upgrade delete `DerivedDataCache`, so the next editor launch and cook are slower.
+
+---
+
+### Patch Notes
+
+What changed in each version: see [PatchNotes.md](PatchNotes.md).
 
 ---
 

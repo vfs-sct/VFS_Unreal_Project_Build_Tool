@@ -23,7 +23,9 @@ names). Teammates get `VFSUnrealProjectBuildTool.exe` + `README.md`
    - **Minor** (0.X.0): new features or behaviour changes.
    - **Patch** (0.0.X): hotfixes.
    Bumping minor resets patch to 0; bumping major resets both. **Also update the README title**
-   (`# VFS Unreal Project Build Tool v<version>`, line 1) to the same version. Then rebuild with
+   (`# VFS Unreal Project Build Tool v<version>`, line 1) to the same version, and **update
+   `PatchNotes.md`**: rename its "Unreleased" section to `### <version>` (or add one), user-facing
+   changes as short bullet points, newest version first. Then rebuild with
    `App\build.bat`, commit the bump with the rest, and push. Tell the user the old and new
    version and why.
 2. This PC runs **SentinelOne**. On 4 Nov it flagged a Claude Code session, killed it and
@@ -165,7 +167,10 @@ The user asked for these specifically — keep them:
   blocker points to Upgrade). It defaults to the newest installed engine that's an upgrade; Keep
   current or the same engine greys Upgrade out; downgrades stay blocked. A confirm dialog (via
   `AskUser`) warns it can't be undone. The script refuses a missing / same / uninstalled engine
-  (exit 1, "Nothing was changed"), switches EngineAssociation, does the Regenerate clean-up, then
+  (exit 1, "Nothing was changed"), switches EngineAssociation, raises `DefaultBuildSettings` /
+  `IncludeOrderVersion` in `Source/*.Target.cs` to the new engine's `Latest` values read from its
+  UBT `TargetRules.cs` (`upgrade_target_files`; older values only, `Latest` untouched; 13 Nov). Works when
+  the project's current engine isn't installed (tested 13 Nov in-process and end to end from "5.6"). Then it does the Regenerate clean-up, then
   generates project files and builds. On Finish Success: Do nothing / Open in Editor (default
   Open). After a run the app re-reads the project's engine. **Regenerate** (`--action regenerate`, added 6 Nov):
   `run_action` deletes whichever of `.vs`, `Binaries`, `DerivedDataCache`, `Intermediate`,
@@ -298,7 +303,39 @@ compiled together with `App/RenamerApp.cs` via `csc -main:UnrealProjectRenamer.H
 which calls the app's private methods/fields by reflection. No input injection, no fake
 programs. Rebuild it that way if more tests are needed.
 
+## Self-update (added 13 Nov)
+
+- `Program.Main` runs `UpdateForm` before `MainForm`. It reads the version from line 1 of
+  `README.md` on `main` (raw.githubusercontent.com, public repo). If that's newer than
+  `Program.Version`, it downloads `VFSUnrealProjectBuildTool.exe` from `main` to `<exe>.new` and checks
+  the downloaded file's own version. Only a newer one is installed (`Updater.Swap`: running exe -> `.old`,
+  `.new` -> exe). It then starts the new .exe with `--updated` (which skips the check) and exits.
+  `Updater.CleanUp` deletes `.old` / `.new` on the next start.
+- **So every push must include both the README version bump and the rebuilt .exe**, or teammates won't
+  update (README ahead of the .exe = no update; the check is harmless either way).
+- Never blocks opening: the whole thing is in try/catch. Check timeout 5 s. The download is cancelled after
+  15 s with no data or 5 min in total. Network errors / cancel = no popup. Other errors (e.g. folder not
+  writable) = "Update failed" dialog, then the current version opens. Closing the window skips the update.
+- Testing: `VFSBUILDTOOL_UPDATE_URL` = another source (a `file:///` folder or `http://127.0.0.1:port/`,
+  with README.md + the .exe); `VFSBUILDTOOL_NO_UPDATE=1` turns it off. Tested 13 Nov on a scratch
+  copy (never the repo's .exe): update from a fake v0.99.0 (screenshots of both stages), already up
+  to date, README ahead of the .exe, no such host, a server that never answers, a dropped
+  download, closing mid-download, real GitHub.
+
 ## Hard-won technical notes
+
+- Build errors by plugin (13 Nov): `build_project` tees UBT's output (Popen, line by line) and keeps
+  `file(line): error` / `file:l:c: error` lines in `BUILD_ERRORS`; after a failed build
+  `report_build_errors` prints `  errors in plugin: <Name> (n errors)` per project plugin (nearest
+  `.uplugin` above the file) and "Next steps" says to replace it with its version for the engine. The
+  app's failure popups read those lines (`BuildErrorPlugins`). Found with ENV_DishonoredAvenue: its
+  FMOD (made for 5.7) doesn't compile on 5.8 (`UAnimNotify::Notify` 2-argument form is gone).
+
+- Installed engines: `HKLM\SOFTWARE\EpicGames\Unreal Engine\<ver>` is **not always written** by the
+  launcher (13 Nov: a PC had 5.7/5.8 installed but only 5.4 in the registry, so the tool said 5.8
+  wasn't installed). Both the app (`Engines.Installed`) and the script (`launcher_list_engines`) also
+  read `%ProgramData%\Epic\UnrealEngineLauncher\LauncherInstalled.dat` (`AppName` `UE_5.8` ->
+  `InstallLocation`); the registry wins if both have a version.
 
 - UBT 5.8 accepts `VisualStudio2022` and `VisualStudio2026`. Project files:
   `-ProjectFileFormat=VisualStudio<year> -<year>`. Build: `-Compiler=VisualStudio<year>`

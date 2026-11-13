@@ -34,3 +34,7 @@ desktop.ini
 
 # Old copies the compiler renames aside when the app is open during a build
 *_VFSUnrealProjectBuildTool.exe
+
+# Left by the app's self-update (the previous .exe and an unfinished download)
+*.exe.old
+*.exe.new

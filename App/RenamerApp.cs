@@ -29,17 +29,33 @@ namespace UnrealProjectRenamer
     static class Program
     {
         // App version: bump this for every build you hand out (major.minor.patch).
-        public const string Version = "0.18.1";
+        public const string Version = "0.19.0";
 
         [DllImport("user32.dll")]
         static extern bool SetProcessDPIAware();
 
         [STAThread]
-        static void Main()
+        static void Main(string[] args)
         {
             try { SetProcessDPIAware(); } catch { }
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
+            // Before the main window: check GitHub for a newer version and, if there is one, swap it in
+            // and start it instead. Skipped right after an update (no loops) and when turned off.
+            // Nothing in here may stop the app opening (offline, GitHub down, any error): it just carries on.
+            try
+            {
+                Updater.CleanUp();
+                if (!args.Contains(Updater.UpdatedArg) && Updater.Enabled)
+                {
+                    using (var f = new UpdateForm())
+                    {
+                        Application.Run(f);
+                        if (f.Restarted) return;
+                    }
+                }
+            }
+            catch { }
             Application.Run(new MainForm());
         }
     }
@@ -62,6 +78,33 @@ namespace UnrealProjectRenamer
                                 var dir = sub == null ? null : sub.GetValue("InstalledDirectory") as string;
                                 if (!string.IsNullOrEmpty(dir) && Directory.Exists(dir)) result[ver] = dir;
                             }
+                }
+            }
+            catch { }
+            // The launcher doesn't always write the registry key (e.g. 5.7 / 5.8 on some PCs);
+            // its own install list has every engine it installed: AppName "UE_5.8" -> InstallLocation.
+            try
+            {
+                var dat = System.IO.Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
+                    @"Epic\UnrealEngineLauncher\LauncherInstalled.dat");
+                if (File.Exists(dat))
+                {
+                    var d = new System.Web.Script.Serialization.JavaScriptSerializer()
+                        .Deserialize<Dictionary<string, object>>(File.ReadAllText(dat));
+                    object list;
+                    if (d != null && d.TryGetValue("InstallationList", out list) && list is System.Collections.IEnumerable)
+                        foreach (var item in (System.Collections.IEnumerable)list)
+                        {
+                            var e = item as Dictionary<string, object>;
+                            object app, loc;
+                            if (e == null || !e.TryGetValue("AppName", out app) || !e.TryGetValue("InstallLocation", out loc)) continue;
+                            var m = Regex.Match(app as string ?? "", @"^UE_(\d+\.\d+)$");
+                            var dir = loc as string;
+                            if (m.Success && !result.ContainsKey(m.Groups[1].Value) && !string.IsNullOrEmpty(dir)
+                                && Directory.Exists(System.IO.Path.Combine(dir, "Engine")))
+                                result[m.Groups[1].Value] = dir;
+                        }
                 }
             }
             catch { }
@@ -688,6 +731,251 @@ namespace UnrealProjectRenamer
         public static void Show(IWin32Window owner, string title, string message)
         {
             using (var d = new DarkDialog(title, message, true, "OK", null)) d.ShowDialog(owner);
+        }
+    }
+
+    /// <summary>Self-update from the GitHub repo. Every push puts the new version in README.md's title
+    /// ("# VFS Unreal Project Build Tool v0.19.0") and the new .exe on main, so those are the source.</summary>
+    static class Updater
+    {
+        const string DefaultSource = "https://raw.githubusercontent.com/vfs-sct/VFS_Unreal_Project_Build_Tool/main/";
+        public const string ExeName = "VFSUnrealProjectBuildTool.exe";
+        public const string UpdatedArg = "--updated";
+
+        /// <summary>Where README.md and the .exe come from. VFSBUILDTOOL_UPDATE_URL replaces it
+        /// (another URL or a file:/// folder, for testing).</summary>
+        public static string Source
+        {
+            get
+            {
+                var s = Environment.GetEnvironmentVariable("VFSBUILDTOOL_UPDATE_URL");
+                if (string.IsNullOrEmpty(s)) return DefaultSource;
+                return s.EndsWith("/") ? s : s + "/";
+            }
+        }
+
+        /// <summary>VFSBUILDTOOL_NO_UPDATE=1 turns the check off.</summary>
+        public static bool Enabled { get { return Environment.GetEnvironmentVariable("VFSBUILDTOOL_NO_UPDATE") != "1"; } }
+
+        /// <summary>The running .exe (replaceable for tests).</summary>
+        public static string ExePath = Application.ExecutablePath;
+        static string OldPath { get { return ExePath + ".old"; } }
+        public static string NewPath { get { return ExePath + ".new"; } }
+
+        public static Version Current { get { return new Version(Program.Version); } }
+
+        /// <summary>The version in README.md's title, or null.</summary>
+        public static Version FromReadme(string readme)
+        {
+            var m = Regex.Match(readme ?? "", @"^#[^\r\n]*?\bv(\d+\.\d+\.\d+)\b", RegexOptions.Multiline);
+            return m.Success ? new Version(m.Groups[1].Value) : null;
+        }
+
+        /// <summary>The version a downloaded .exe says it is (Properties > Details), or null.</summary>
+        public static Version FileVersionOf(string path)
+        {
+            try
+            {
+                var v = FileVersionInfo.GetVersionInfo(path).ProductVersion;
+                var m = Regex.Match(v ?? "", @"^\d+\.\d+\.\d+");
+                return m.Success ? new Version(m.Value) : null;
+            }
+            catch { return null; }
+        }
+
+        /// <summary>Puts the downloaded .exe in place of the running one (a running .exe can be renamed,
+        /// not overwritten). Puts the old one back if that fails. Throws on failure.</summary>
+        public static void Swap()
+        {
+            if (File.Exists(OldPath)) File.Delete(OldPath);
+            File.Move(ExePath, OldPath);
+            try { File.Move(NewPath, ExePath); }
+            catch
+            {
+                try { File.Move(OldPath, ExePath); } catch { }
+                throw;
+            }
+        }
+
+        /// <summary>Removes what an update left behind: the previous .exe (still closing for a moment
+        /// after the update, so retried in the background) and an unfinished download.</summary>
+        public static void CleanUp()
+        {
+            try { if (File.Exists(NewPath)) File.Delete(NewPath); } catch { }
+            if (!File.Exists(OldPath)) return;
+            var old = OldPath;
+            new System.Threading.Thread(() =>
+            {
+                for (int i = 0; i < 20 && File.Exists(old); i++)
+                {
+                    try { File.Delete(old); } catch { System.Threading.Thread.Sleep(500); }
+                }
+            }) { IsBackground = true }.Start();
+        }
+    }
+
+    /// <summary>Thin progress bar in the app's colours. Value -1 = busy (sliding block).</summary>
+    class DarkProgress : Control
+    {
+        int value = -1, offset;
+        readonly Timer timer = new Timer { Interval = 30 };
+
+        public DarkProgress()
+        {
+            DoubleBuffered = true;
+            Height = 6;
+            timer.Tick += (s, e) => { offset = (offset + 6) % (Width + Width / 3); Invalidate(); };
+            timer.Start();
+        }
+
+        public int Value
+        {
+            get { return value; }
+            set { this.value = Math.Min(100, value); if (value < 0) timer.Start(); else timer.Stop(); Invalidate(); }
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            e.Graphics.Clear(Theme.Raised);
+            using (var b = new SolidBrush(Theme.Accent))
+            {
+                if (value >= 0) e.Graphics.FillRectangle(b, 0, 0, Width * value / 100, Height);
+                else e.Graphics.FillRectangle(b, offset - Width / 3, 0, Width / 3, Height);
+            }
+        }
+
+        protected override void Dispose(bool disposing) { if (disposing) timer.Dispose(); base.Dispose(disposing); }
+    }
+
+    /// <summary>The window shown at start-up while checking for (and installing) a newer version.
+    /// Any problem (offline, GitHub down, folder not writable) just opens the current version.</summary>
+    class UpdateForm : Form
+    {
+        const int CheckTimeoutMs = 5000;
+        readonly Label status = new Label { AutoSize = true, Margin = new Padding(0, 0, 0, 10) };
+        readonly DarkProgress bar = new DarkProgress { Width = 340, Margin = new Padding(0) };
+
+        /// <summary>True when the new version was started and this one should close.</summary>
+        public bool Restarted { get; private set; }
+
+        public UpdateForm()
+        {
+            Text = "VFS Unreal Project Build Tool v" + Program.Version;
+            Font = new Font("Segoe UI", 9.5f);
+            AutoScaleMode = AutoScaleMode.Dpi;
+            FormBorderStyle = FormBorderStyle.FixedDialog;
+            MaximizeBox = MinimizeBox = false;
+            StartPosition = FormStartPosition.CenterScreen;
+            AutoSize = true;
+            AutoSizeMode = AutoSizeMode.GrowAndShrink;
+            try { Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
+
+            var layout = new TableLayoutPanel { AutoSize = true, ColumnCount = 1, Padding = new Padding(22, 18, 22, 22) };
+            status.Text = "Checking for updates...";
+            layout.Controls.Add(status);
+            layout.Controls.Add(bar);
+            Controls.Add(layout);
+            Theme.Apply(this);
+            status.ForeColor = Theme.Text;
+            HandleCreated += (s, e) => Theme.DarkTitleBar(Handle);
+            // Closing this window skips the update: stop any download, then the current version opens.
+            FormClosing += (s, e) =>
+            {
+                if (installing) { e.Cancel = true; return; } // the .exe swap takes a moment; let it finish
+                closedByUser = true;
+                try { if (web != null) web.CancelAsync(); } catch { }
+            };
+            Shown += async (s, e) =>
+            {
+                try { await CheckAndUpdate(); }
+                catch { } // never stop the app opening
+                if (!IsDisposed) { installing = false; Close(); }
+            };
+        }
+
+        System.Net.WebClient web;
+        bool closedByUser, installing;
+
+        /// <summary>Runs one download; cancelled when it takes longer than `limitMs` in total, or when
+        /// no data arrives for `stallMs` (a dropped or very slow connection).</summary>
+        async System.Threading.Tasks.Task<T> Fetch<T>(Func<System.Net.WebClient, System.Threading.Tasks.Task<T>> start,
+                                                      int limitMs, int stallMs, Action<System.Net.DownloadProgressChangedEventArgs> progress = null)
+        {
+            using (var w = new System.Net.WebClient())
+            using (var timer = new Timer { Interval = 500 })
+            {
+                web = w;
+                w.Headers[System.Net.HttpRequestHeader.CacheControl] = "no-cache";
+                var started = DateTime.UtcNow;
+                var lastData = DateTime.UtcNow;
+                w.DownloadProgressChanged += (s, e) => { lastData = DateTime.UtcNow; if (progress != null) progress(e); };
+                timer.Tick += (s, e) =>
+                {
+                    var now = DateTime.UtcNow;
+                    if ((now - started).TotalMilliseconds > limitMs || (now - lastData).TotalMilliseconds > stallMs)
+                    {
+                        timer.Stop();
+                        w.CancelAsync();
+                    }
+                };
+                timer.Start();
+                try { return await start(w); }
+                finally { web = null; }
+            }
+        }
+
+        async System.Threading.Tasks.Task CheckAndUpdate()
+        {
+            try { System.Net.ServicePointManager.SecurityProtocol |= System.Net.SecurityProtocolType.Tls12; } catch { }
+            Version latest;
+            try
+            {
+                latest = Updater.FromReadme(await Fetch(w => w.DownloadStringTaskAsync(new Uri(Updater.Source + "README.md")),
+                                                        CheckTimeoutMs, CheckTimeoutMs));
+            }
+            catch { return; } // offline, timed out, GitHub unreachable: carry on with this version
+            if (closedByUser || latest == null || latest <= Updater.Current) return;
+
+            status.Text = "Updating to v" + latest + " (you have v" + Program.Version + ")...";
+            bar.Value = 0;
+            string problem = null;
+            try
+            {
+                await Fetch(async w => { await w.DownloadFileTaskAsync(new Uri(Updater.Source + Updater.ExeName), Updater.NewPath); return true; },
+                            5 * 60 * 1000, 15000,
+                            e => bar.Value = e.TotalBytesToReceive > 0 ? (int)(e.BytesReceived * 100 / e.TotalBytesToReceive) : -1);
+                if (closedByUser) throw new OperationCanceledException();
+                bar.Value = 100;
+                // Only install a real .exe that's newer than this one (the README may be pushed ahead of it).
+                var got = Updater.FileVersionOf(Updater.NewPath);
+                if (got == null || got <= Updater.Current)
+                {
+                    File.Delete(Updater.NewPath);
+                    return;
+                }
+                status.Text = "Installing v" + got + "...";
+                Refresh();
+                installing = true;
+                Updater.Swap();
+                Process.Start(new ProcessStartInfo(Updater.ExePath, Updater.UpdatedArg) { UseShellExecute = false });
+                Restarted = true;
+            }
+            catch (Exception ex)
+            {
+                try { if (File.Exists(Updater.NewPath)) File.Delete(Updater.NewPath); } catch { }
+                // Lost connection, timed out or closed by the user: just open this version, no popup.
+                if (closedByUser || ex is System.Net.WebException || ex is OperationCanceledException) return;
+                problem = ex is UnauthorizedAccessException
+                    ? "This folder can't be written to, so the update can't be installed here. Move the app to a folder you own (e.g. Documents) or download the new version from GitHub."
+                    : ex.Message;
+            }
+            finally { installing = false; }
+            if (problem != null)
+            {
+                Hide();
+                DarkDialog.Show(null, "Update failed",
+                    "Couldn't update to v" + latest + ": " + problem + "\n\nOpening v" + Program.Version + " instead.");
+            }
         }
     }
 
@@ -1550,6 +1838,8 @@ namespace UnrealProjectRenamer
                 steps.Add("- Generating the Visual Studio project files failed.");
             if (has(@"build FAILED"))
                 steps.Add("- The build failed, so the asset resave and plugin check were skipped.");
+            var badPlugins = BuildErrorPlugins(lines);
+            if (badPlugins != null) steps.Add(badPlugins);
             if (has(@"^\s+(SKIPPED|FAILED)\s"))
                 steps.Add("- Some assets couldn't be resaved (listed in the log). Open them in the editor, fix them and save them.");
             if (has(@"^\s+FAIL\s") || has(@"FAILED: the editor didn't start"))
@@ -2026,6 +2316,19 @@ namespace UnrealProjectRenamer
         }
 
         /// <summary>What went wrong in a Build / Rebuild / Package run, from the script's output.</summary>
+        /// <summary>"- The build errors are in these plugins: ..." from the script's "errors in plugin: X (n errors)"
+        /// lines, or null when no project plugin had errors.</summary>
+        static string BuildErrorPlugins(string[] lines)
+        {
+            var names = lines.Select(l => Regex.Match(l, @"^\s+errors in plugin: (\S+)"))
+                             .Where(m => m.Success).Select(m => m.Groups[1].Value).Distinct().ToList();
+            if (names.Count == 0) return null;
+            return "- The build errors are in " + (names.Count == 1 ? "the plugin " : "the plugins ") + string.Join(", ", names) +
+                   ", which may not support this engine version yet. Replace " + (names.Count == 1 ? "it" : "them") +
+                   " in the project's Plugins folder with " + (names.Count == 1 ? "its" : "their") +
+                   " version for this engine, then run again.";
+        }
+
         string ActionFailureMessage()
         {
             var lines = log.Lines;
@@ -2043,6 +2346,8 @@ namespace UnrealProjectRenamer
                 steps.Add("- Generating the Visual Studio project files failed.");
             if (has(@"build FAILED"))
                 steps.Add("- The build failed" + (runAction == Act.Package ? ", so nothing was cooked or packaged." : "."));
+            var badPlugins = BuildErrorPlugins(lines);
+            if (badPlugins != null) steps.Add(badPlugins);
             if (has(@"^\s+cook FAILED"))
                 steps.Add("- Cooking the content failed.");
             if (has(@"^\s+packaging FAILED"))
