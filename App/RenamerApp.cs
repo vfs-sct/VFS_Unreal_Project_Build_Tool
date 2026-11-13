@@ -29,7 +29,7 @@ namespace UnrealProjectRenamer
     static class Program
     {
         // App version: bump this for every build you hand out (major.minor.patch).
-        public const string Version = "0.20.2";
+        public const string Version = "0.20.3";
 
         [DllImport("user32.dll")]
         static extern bool SetProcessDPIAware();
@@ -1034,7 +1034,8 @@ namespace UnrealProjectRenamer
         readonly Label engineNote = new Label { AutoSize = true, ForeColor = Theme.Warn };
         readonly ComboBox vsBox = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList };
         readonly Label vsNote = new Label { AutoSize = true, ForeColor = Theme.Error, MaximumSize = new Size(700, 0) };
-        // Red, under Project: the remembered/typed project can't be found (hidden when it's fine or empty).
+        // Under Project when there is no project: a grey "pick a .uproject" hint while the box is empty, or red when the
+        // remembered/typed project can't be found. Hidden once a project is picked.
         readonly Label projectNote = new Label { AutoSize = true, ForeColor = Theme.Error, MaximumSize = new Size(700, 0), Visible = false };
         // What the app does. Order is the order in the Action dropdown; Build Solution is the default.
         enum Act { Build, Regenerate, Package, Upgrade, Rename } // settings store these names, so the order can change
@@ -1107,7 +1108,7 @@ namespace UnrealProjectRenamer
         readonly Button saveLogButton = new Button { Text = "Save Output Log", AutoSize = true, Enabled = false };
         readonly Button copyLogButton = new Button { Text = "Copy Output Log", AutoSize = true, Enabled = false };
         readonly RichTextBox log = new RichTextBox(); // rich text so the final "Check in Unreal Editor" section can be yellow
-        readonly Label status = new Label { AutoSize = true, Text = "Pick a .uproject to start." };
+        readonly Label status = new Label { AutoSize = true };
 
         string currentAssociation = "";
         string lastResultFolder;
@@ -1235,6 +1236,12 @@ namespace UnrealProjectRenamer
             log.Font = new Font("Consolas", 9f);
             log.BackColor = SystemColors.Window;
             log.Dock = DockStyle.Fill;
+            // "Output Log" heading on the left, just above the box.
+            var logLabel = new Label { Text = "Output Log", AutoSize = true, Margin = new Padding(0, 2, 0, 4) };
+            grid.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            grid.Controls.Add(logLabel, 0, grid.RowCount);
+            grid.SetColumnSpan(logLabel, 3);
+            grid.RowCount++;
             grid.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
             grid.Controls.Add(log, 0, grid.RowCount);
             grid.SetColumnSpan(log, 3);
@@ -1837,11 +1844,14 @@ namespace UnrealProjectRenamer
             var act = CurrentAction;
             bool rename = act == Act.Rename;
             string problem = null;
-            // A project that can't be found: the reason in red under Project, a pointer in the status line.
-            var missing = File.Exists(ProjectPath) || projectBox.Text.Trim().Trim('"').Length == 0 ? null : MissingProjectMessage();
-            projectNote.Text = missing ?? "";
-            projectNote.Visible = missing != null;
-            if (!File.Exists(ProjectPath)) problem = missing != null ? "Can't start - see the message under Project." : MissingProjectMessage();
+            // No project yet: a grey hint under Project. One that can't be found: the reason in red there,
+            // and a pointer in the status line.
+            bool noProject = !File.Exists(ProjectPath);
+            bool empty = projectBox.Text.Trim().Trim('"').Length == 0;
+            projectNote.Text = noProject ? MissingProjectMessage() : "";
+            projectNote.ForeColor = empty ? Theme.Muted : Theme.Error;
+            projectNote.Visible = noProject;
+            if (noProject) problem = empty ? "" : "Can't start - see the message under Project.";
             else if (rename && nameBox.Text.Length == 0) problem = "Type the new project name.";
             else if (rename && !ValidName.IsMatch(nameBox.Text)) problem = "The name must start with a letter and use only letters, digits and underscores.";
             else if (rename && nameBox.Text == old) problem = "The new name is the same as the current one.";

@@ -4,6 +4,13 @@
 
 ---
 
+### 0.20.3
+
+- "Pick a .uproject to start (or drag one onto this window)." shows in grey under the Project box while it's empty, instead of in the status line at the bottom.
+- An "Output Log" heading sits above the log box.
+
+---
+
 ### 0.20.2
 
 - If the remembered project has been moved or deleted, a red note under Project says so ("Project not found") instead of the general "Pick a .uproject to start" hint. A folder with no `.uproject` in it gets its own note.
