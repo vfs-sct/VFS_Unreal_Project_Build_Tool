@@ -1,4 +1,4 @@
-# VFS Unreal Project Build Tool v0.21.1
+# VFS Unreal Project Build Tool v0.21.2
 
 ### Contents
 

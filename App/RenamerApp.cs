@@ -29,7 +29,7 @@ namespace UnrealProjectRenamer
     static class Program
     {
         // App version: bump this for every build you hand out (major.minor.patch).
-        public const string Version = "0.21.1";
+        public const string Version = "0.21.2";
 
         [DllImport("user32.dll")]
         static extern bool SetProcessDPIAware();
@@ -1089,9 +1089,9 @@ namespace UnrealProjectRenamer
         // Shown in grey under the Build dropdown for the selected configuration (same order as BuildConfigs).
         static readonly string[] BuildConfigDescriptions =
         {
-            "For testing purposes; keeps the console, logging, visible draw traces, debug tools.\n" +
+            "For testing purposes; keeps the console, print strings, visible draw traces, and Unreal's debug commands.\n" +
                 "Ideal for Milestone reviews so instructors can debug through your game if required.",
-            "For public consumption; fastest, with no console, logging, visible draw traces, or debug tools.",
+            "For public consumption; removes console, print strings, visible draw traces, and Unreal's debug commands.",
         };
         readonly Label buildConfigNote = new Label { AutoSize = true, ForeColor = Theme.Warn, MaximumSize = new Size(620, 0),
                                                       Text = BuildConfigDescriptions[0] };
@@ -1105,7 +1105,7 @@ namespace UnrealProjectRenamer
         Dictionary<string, bool> cleanCookByConfig = new Dictionary<string, bool>(CleanCookDefaults);
         bool showingCleanCook; // true while the box is being set from cleanCookByConfig (not a user click)
         readonly Label cookContentNote = new Label { AutoSize = true, ForeColor = Theme.Muted, MaximumSize = new Size(620, 0),
-            Text = "Deletes the old cooked content and cooks every asset from scratch. Slower; when off, only changed " +
+            Text = "Deletes the old cooked content and cooks every asset from scratch. Slower to build when on. When off, only changed " +
                    "assets are recooked. Use it if the packaged game shows old or missing content, or if packaging it for public " +
                    "consumption for the first time (Pitch n Play, Steam/Epic store, etc)." };
         readonly List<Panel> separators = new List<Panel>(); // thin lines between groups of fields

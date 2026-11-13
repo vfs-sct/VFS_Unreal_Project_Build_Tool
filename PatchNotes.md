@@ -4,6 +4,14 @@
 
 ---
 
+### 0.21.2
+
+- The Development description now starts: "For testing purposes; keeps the console, print strings, visible draw traces, and Unreal's debug commands."
+- The Shipping description now reads: "For public consumption; removes console, print strings, visible draw traces, and Unreal's debug commands."
+- The Clean cook content description says "Slower to build when on. When off, only changed assets are recooked."
+
+---
+
 ### 0.21.1
 
 - The red line under Development now reads "USE SHIPPING FOR PITCH N PLAY / STEAM / EPIC / ITCH.IO / VFS ARCADE BUILDS!"
