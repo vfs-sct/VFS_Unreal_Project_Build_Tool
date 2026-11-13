@@ -4,6 +4,12 @@
 
 ---
 
+### 0.20.2
+
+- If the remembered project has been moved or deleted, a red note under Project says so ("Project not found") instead of the general "Pick a .uproject to start" hint. A folder with no `.uproject` in it gets its own note.
+
+---
+
 ### 0.20.1
 
 - The Development / Shipping description under the Build dropdown is gold, so it stands out.

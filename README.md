@@ -1,4 +1,4 @@
-# VFS Unreal Project Build Tool v0.20.1
+# VFS Unreal Project Build Tool v0.20.2
 
 ### Contents
 
@@ -185,6 +185,7 @@ Use when Visual Studio or IntelliSense is confused.
 
 | Message | What it means / what to do |
 |---|---|
+| **"Project not found"** (red, under Project) | The project the app remembered (or the path typed in) no longer exists: it was moved, renamed or deleted. Click **Browse...** and pick its `.uproject` again. |
 | **"... is open in Unreal Editor / Visual Studio / Rider"** | Close the project there, then click **Check again**. |
 | **Note under Visual Studio** (main button greyed out) | This Visual Studio, its C++ compiler or the Windows SDK isn't one the engine accepts. The note says what to install or update in the Visual Studio Installer. |
 | **"This project's engine ... isn't installed on this PC"** | Install that engine, or use **Upgrade Project Version** to move the project to an installed one. |

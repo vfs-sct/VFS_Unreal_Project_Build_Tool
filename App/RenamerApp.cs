@@ -29,7 +29,7 @@ namespace UnrealProjectRenamer
     static class Program
     {
         // App version: bump this for every build you hand out (major.minor.patch).
-        public const string Version = "0.20.1";
+        public const string Version = "0.20.2";
 
         [DllImport("user32.dll")]
         static extern bool SetProcessDPIAware();
@@ -1034,6 +1034,8 @@ namespace UnrealProjectRenamer
         readonly Label engineNote = new Label { AutoSize = true, ForeColor = Theme.Warn };
         readonly ComboBox vsBox = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList };
         readonly Label vsNote = new Label { AutoSize = true, ForeColor = Theme.Error, MaximumSize = new Size(700, 0) };
+        // Red, under Project: the remembered/typed project can't be found (hidden when it's fine or empty).
+        readonly Label projectNote = new Label { AutoSize = true, ForeColor = Theme.Error, MaximumSize = new Size(700, 0), Visible = false };
         // What the app does. Order is the order in the Action dropdown; Build Solution is the default.
         enum Act { Build, Regenerate, Package, Upgrade, Rename } // settings store these names, so the order can change
         static readonly string[] ActionNames = { "Build Solution", "Regenerate Visual Studio project files", "Package Build", "Upgrade Project Version", "Rename Project" };
@@ -1149,6 +1151,8 @@ namespace UnrealProjectRenamer
             grid.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
 
             AddRow(grid, "Project (.uproject)", Frame(projectBox), projectBrowse);
+            projectNote.Margin = new Padding(3, 0, 3, 6);
+            AddRow(grid, "", projectNote, null);
             AddSeparator(grid);
 
             actionBox.Items.AddRange(ActionNames);
@@ -1621,6 +1625,17 @@ namespace UnrealProjectRenamer
             }
         }
 
+        /// <summary>Why there's no project to work on: nothing picked yet, a remembered project that has
+        /// been moved or deleted, or a folder with no .uproject in it.</summary>
+        string MissingProjectMessage()
+        {
+            var typed = projectBox.Text.Trim().Trim('"');
+            if (typed.Length == 0) return "Pick a .uproject to start (or drag one onto this window).";
+            if (Directory.Exists(typed))
+                return "There's no .uproject in this folder. Pick the project's .uproject file with Browse.";
+            return "Project not found. It may have been moved or deleted. Pick it again with Browse.";
+        }
+
         string OldName { get { return File.Exists(ProjectPath) ? Path.GetFileNameWithoutExtension(ProjectPath) : ""; } }
 
         void FillVisualStudios()
@@ -1822,7 +1837,11 @@ namespace UnrealProjectRenamer
             var act = CurrentAction;
             bool rename = act == Act.Rename;
             string problem = null;
-            if (!File.Exists(ProjectPath)) problem = "Pick a .uproject to start (or drag one onto this window).";
+            // A project that can't be found: the reason in red under Project, a pointer in the status line.
+            var missing = File.Exists(ProjectPath) || projectBox.Text.Trim().Trim('"').Length == 0 ? null : MissingProjectMessage();
+            projectNote.Text = missing ?? "";
+            projectNote.Visible = missing != null;
+            if (!File.Exists(ProjectPath)) problem = missing != null ? "Can't start - see the message under Project." : MissingProjectMessage();
             else if (rename && nameBox.Text.Length == 0) problem = "Type the new project name.";
             else if (rename && !ValidName.IsMatch(nameBox.Text)) problem = "The name must start with a letter and use only letters, digits and underscores.";
             else if (rename && nameBox.Text == old) problem = "The new name is the same as the current one.";
