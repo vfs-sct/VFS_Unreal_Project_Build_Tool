@@ -213,7 +213,9 @@ The user asked for these specifically — keep them:
   holds `LastAction`, **one `Project` for every action** (the user's rule, 13 Nov: the .uproject stays the
   same whatever the action; `savedProject`, read once in `LoadSettings`; older files with a Project per
   action use the last-used action's), and, for each action, Engine, VisualStudio (install path),
-  OnFinishSuccess, Rebuild, Build, CleanCook, BuildLocation. `ActionChanged` saves the action being
+  OnFinishSuccess, Rebuild, Build, CleanCookDevelopment / CleanCookShipping (13 Nov: Clean cook content is
+  remembered per Build configuration, `cleanCookByConfig` / `ShowCleanCook`; Shipping defaults to on; an old
+  single `CleanCook` becomes Development's), BuildLocation. `ActionChanged` saves the action being
   left **before** touching the screen, resets the action options to their defaults (On Finish
   Success: Open in Editor, or Launch .exe for Package; Rebuild/Clean cook off; Development;
   `<project>\Builds`) — Project / Engine / VS carry over — then restores the new action's saved

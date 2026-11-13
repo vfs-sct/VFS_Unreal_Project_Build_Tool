@@ -4,6 +4,15 @@
 
 ---
 
+### 0.21.0
+
+- The Development description adds: "Ideal for Milestone reviews so instructors can debug through your game if required."
+- The Clean cook content description also suggests it when packaging for public consumption for the first time (Pitch n Play, Steam/Epic store, etc).
+- Clean cook content is remembered separately for Development and Shipping, and is on by default for Shipping.
+- With Development selected, a red line under its description warns: "NOT IDEAL FOR PITCH N PLAY / STEAM / EPIC / ITCH.IO / VFS ARCADE BUILDS!"
+
+---
+
 ### 0.20.4
 
 - The project stays the same whatever the action. Before, each action remembered its own project, so switching actions could bring back an old one.

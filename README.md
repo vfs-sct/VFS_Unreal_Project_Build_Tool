@@ -1,4 +1,4 @@
-# VFS Unreal Project Build Tool v0.20.4
+# VFS Unreal Project Build Tool v0.21.0
 
 ### Contents
 
@@ -116,6 +116,7 @@ Use when Visual Studio or IntelliSense is confused.
 1. Optional: tick **Rebuild Solution** to clean and rebuild the code first.
 2. **Build:** **Development** (default) or **Shipping**.
 3. Optional: tick **Clean cook content** to delete old cooked data and cook everything (slower; safest after a rename). Unticked, only changed content is recooked. Hover over it for an explanation.
+   - Development and Shipping each remember their own tick. Shipping starts ticked; Development starts unticked.
 
    ![Clean cook content tooltip](Docs/31-package-clean-cook-tooltip.png)
 

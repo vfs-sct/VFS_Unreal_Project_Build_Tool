@@ -29,7 +29,7 @@ namespace UnrealProjectRenamer
     static class Program
     {
         // App version: bump this for every build you hand out (major.minor.patch).
-        public const string Version = "0.20.4";
+        public const string Version = "0.21.0";
 
         [DllImport("user32.dll")]
         static extern bool SetProcessDPIAware();
@@ -1089,15 +1089,25 @@ namespace UnrealProjectRenamer
         // Shown in grey under the Build dropdown for the selected configuration (same order as BuildConfigs).
         static readonly string[] BuildConfigDescriptions =
         {
-            "For testing purposes; keeps the console, logging, visible draw traces, debug tools.",
+            "For testing purposes; keeps the console, logging, visible draw traces, debug tools.\n" +
+                "Ideal for Milestone reviews so instructors can debug through your game if required.",
             "For public consumption; fastest, with no console, logging, visible draw traces, or debug tools.",
         };
         readonly Label buildConfigNote = new Label { AutoSize = true, ForeColor = Theme.Warn, MaximumSize = new Size(620, 0),
                                                       Text = BuildConfigDescriptions[0] };
+        // Red, under the Development description: a Development build isn't for the public.
+        readonly Label buildConfigWarning = new Label { AutoSize = true, ForeColor = Theme.Error, MaximumSize = new Size(620, 0),
+                                                        Text = "NOT IDEAL FOR PITCH N PLAY / STEAM / EPIC / ITCH.IO / VFS ARCADE BUILDS!" };
         readonly CheckBox cookContentBox = new DarkCheck { Text = "Clean cook content", AutoSize = true, Checked = false };
+        // Clean cook content is remembered per Build configuration (the user's choice, 13 Nov): switching between
+        // Development and Shipping brings back each one's own tick. Shipping starts ticked.
+        static readonly Dictionary<string, bool> CleanCookDefaults = new Dictionary<string, bool> { { "Development", false }, { "Shipping", true } };
+        Dictionary<string, bool> cleanCookByConfig = new Dictionary<string, bool>(CleanCookDefaults);
+        bool showingCleanCook; // true while the box is being set from cleanCookByConfig (not a user click)
         readonly Label cookContentNote = new Label { AutoSize = true, ForeColor = Theme.Muted, MaximumSize = new Size(620, 0),
             Text = "Deletes the old cooked content and cooks every asset from scratch. Slower; when off, only changed " +
-                   "assets are recooked. Use it if the packaged game shows old or missing content." };
+                   "assets are recooked. Use it if the packaged game shows old or missing content, or if packaging it for public " +
+                   "consumption for the first time (Pitch n Play, Steam/Epic store, etc)." };
         readonly List<Panel> separators = new List<Panel>(); // thin lines between groups of fields
         string packageDir;          // where this rename's packaged build goes (asked when Rename is clicked)
         string packagedFolder;      // set after a successful package, for Open folder
@@ -1170,13 +1180,20 @@ namespace UnrealProjectRenamer
 
             buildConfigBox.Items.AddRange(BuildConfigs);
             buildConfigBox.SelectedIndexChanged += (s, e) =>
+            {
                 buildConfigNote.Text = BuildConfigDescriptions[Math.Max(0, buildConfigBox.SelectedIndex)];
+                UpdateBuildConfigWarning();
+                ShowCleanCook();
+            };
+            cookContentBox.CheckedChanged += (s, e) => { if (!showingCleanCook) cleanCookByConfig[BuildConfigName] = cookContentBox.Checked; };
             buildConfigBox.SelectedIndex = 0; // Development
             buildConfigBox.Width = 260;
             buildConfigBox.Margin = new Padding(3);
             buildConfigLabel = AddRow(grid, "Build", Host(buildConfigBox), null);
-            buildConfigNote.Margin = new Padding(3, 0, 3, 2);
+            buildConfigNote.Margin = new Padding(3, 0, 3, 0); // the red line below sits right under it
             AddRow(grid, "", buildConfigNote, null);
+            buildConfigWarning.Margin = new Padding(3, 0, 3, 2);
+            AddRow(grid, "", buildConfigWarning, null);
             cookContentBox.Margin = new Padding(3, 6, 3, 0);
             AddRow(grid, "", cookContentBox, null);
             cookContentNote.Margin = new Padding(3, 2, 3, 6);
@@ -1371,6 +1388,7 @@ namespace UnrealProjectRenamer
             bool package = act == Act.Package;
             buildConfigBox.Parent.Visible = package; // its host panel
             buildConfigNote.Visible = package;
+            UpdateBuildConfigWarning();
             cookContentBox.Visible = cookContentNote.Visible = package;
             buildLocationBox.Parent.Visible = package; // its frame
             buildLocationBrowse.Visible = package;
@@ -1384,8 +1402,9 @@ namespace UnrealProjectRenamer
             // Each action starts on its own defaults (Project and Visual Studio carry over)...
             FillWhenDone(package ? PackageWhenDoneDefault : Array.IndexOf(BasicWhenDone, OpenEditor));
             rebuildBox.Checked = false;
-            cookContentBox.Checked = false;
+            cleanCookByConfig = new Dictionary<string, bool>(CleanCookDefaults);
             buildConfigBox.SelectedIndex = 0; // Development
+            ShowCleanCook();
             if (DefaultBuildLocation() != null) { autoBuildLocation = DefaultBuildLocation(); buildLocationBox.Text = autoBuildLocation; }
             PickActionEngine();
             // ...then gets back what it had last time, if anything.
@@ -1475,7 +1494,8 @@ namespace UnrealProjectRenamer
                 { "OnFinishSuccess", WhenDone },
                 { "Rebuild", rebuildBox.Checked ? "1" : "0" },
                 { "Build", buildConfigBox.SelectedItem as string ?? "" },
-                { "CleanCook", cookContentBox.Checked ? "1" : "0" },
+                { "CleanCookDevelopment", CleanCookFor("Development") ? "1" : "0" },
+                { "CleanCookShipping", CleanCookFor("Shipping") ? "1" : "0" },
                 { "BuildLocation", buildLocationBox.Text },
             };
             try
@@ -1513,7 +1533,11 @@ namespace UnrealProjectRenamer
             if (f.TryGetValue("OnFinishSuccess", out v) && whenDoneBox.Items.Contains(v)) whenDoneBox.SelectedItem = v;
             if (f.TryGetValue("Rebuild", out v)) rebuildBox.Checked = v == "1";
             if (f.TryGetValue("Build", out v) && buildConfigBox.Items.Contains(v)) buildConfigBox.SelectedItem = v;
-            if (f.TryGetValue("CleanCook", out v)) cookContentBox.Checked = v == "1";
+            // Clean cook per configuration. Settings from before 0.20.5 had one box for both: it becomes Development's.
+            foreach (var config in BuildConfigs)
+                if (f.TryGetValue("CleanCook" + config, out v)) cleanCookByConfig[config] = v == "1";
+            if (!f.ContainsKey("CleanCookDevelopment") && f.TryGetValue("CleanCook", out v)) cleanCookByConfig["Development"] = v == "1";
+            ShowCleanCook();
             // A saved location is kept, except the old <project>/Packaged suggestion, which becomes <project>/Builds.
             if (f.TryGetValue("BuildLocation", out v) && v.Length > 0)
             {
@@ -2108,6 +2132,29 @@ namespace UnrealProjectRenamer
             if (choice == OpenEditor) args.Add("--open-editor");
             if (choice == LaunchExe && config != null) args.Add("--launch");
             return args.ToArray();
+        }
+
+        /// <summary>The Build field's configuration ("Development" / "Shipping"), whatever the action.</summary>
+        string BuildConfigName { get { return buildConfigBox.SelectedItem as string ?? BuildConfigs[0]; } }
+
+        /// <summary>The red "not for the public" line: Package Build with Development only.</summary>
+        void UpdateBuildConfigWarning()
+        {
+            buildConfigWarning.Visible = CurrentAction == Act.Package && BuildConfigName == "Development";
+        }
+
+        bool CleanCookFor(string config)
+        {
+            bool on;
+            return cleanCookByConfig.TryGetValue(config, out on) ? on : CleanCookDefaults.TryGetValue(config, out on) && on;
+        }
+
+        /// <summary>Ticks Clean cook content as remembered for the selected Build configuration.</summary>
+        void ShowCleanCook()
+        {
+            showingCleanCook = true;
+            cookContentBox.Checked = CleanCookFor(BuildConfigName);
+            showingCleanCook = false;
         }
 
         /// <summary>"Development" / "Shipping" (the Build field) for Package Build, otherwise null.</summary>
