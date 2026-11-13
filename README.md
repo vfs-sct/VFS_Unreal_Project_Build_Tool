@@ -13,8 +13,8 @@
   - [Rename Project](#rename-project)
 - [Messages you might see](#messages-you-might-see)
 - [Limitations](#limitations)
-- [Patch Notes](PatchNotes.md)
 - [Known Issues](#known-issues)
+- [Patch Notes](PatchNotes.md)
 
 ---
 
@@ -214,13 +214,13 @@ Use when Visual Studio or IntelliSense is confused.
 
 ---
 
-### Patch Notes
-
-What changed in each version: see [PatchNotes.md](PatchNotes.md).
-
----
-
 ### Known Issues
 
 - A folder with several `.uproject` files uses the first one without asking.
 - Some project-wide editor warnings can still be blamed on whichever asset loads first, so that asset is skipped. Only the Gameplay Ability System's "No GameplayCueNotifyPaths" warning is filtered out.
+
+---
+
+### Patch Notes
+
+What changed in each version: see [PatchNotes.md](PatchNotes.md).
