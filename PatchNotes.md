@@ -4,6 +4,12 @@
 
 ---
 
+### 0.21.3
+
+- Rename Project: a grey note under New name lists what a name can't contain (spaces, symbols, Windows reserved names such as CON or NUL, C++ keywords such as class or int, or only changing the capitalisation).
+
+---
+
 ### 0.21.2
 
 - The Development description now starts: "For testing purposes; keeps the console, print strings, visible draw traces, and Unreal's debug commands."

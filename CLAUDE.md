@@ -258,6 +258,7 @@ The user asked for these specifically — keep them:
   line) and the script (`new_name_problem`: exit 1, "Nothing was changed"): Windows reserved names
   (CON, PRN, AUX, NUL, COM1-9, LPT1-9; any case), C++ keywords (exact case, so `Class` is allowed),
   and case-only changes (`Hail` -> `hail`). Keep the two lists in step. Tested both sides.
+  A grey note under New name (`nameNote`, Rename only, 13 Nov) lists those rules; keep it in step too.
 - **Sounds** (`Sfx`, added 6 Nov): synthesized in code as in-memory .wav (no sound files),
   played with `SoundPlayer` through the `MainForm.PlaySound` hook. Start = real rename begins
   (not Preview, not the common-name re-run); Success = "Renamed and built"; Failure = not

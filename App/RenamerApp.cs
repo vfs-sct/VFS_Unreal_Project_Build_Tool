@@ -29,7 +29,7 @@ namespace UnrealProjectRenamer
     static class Program
     {
         // App version: bump this for every build you hand out (major.minor.patch).
-        public const string Version = "0.21.2";
+        public const string Version = "0.21.3";
 
         [DllImport("user32.dll")]
         static extern bool SetProcessDPIAware();
@@ -1053,6 +1053,14 @@ namespace UnrealProjectRenamer
                 "working, then builds and resaves assets. Commit first.",
         };
         readonly Label actionNote = new Label { AutoSize = true, ForeColor = Theme.Muted, MaximumSize = new Size(620, 0) };
+        // Under New name (Rename Project only): what a name may contain, matching ValidName and NewNameProblem.
+        readonly Label nameNote = new Label
+        {
+            AutoSize = true, ForeColor = Theme.Muted, MaximumSize = new Size(620, 0),
+            Text = "Letters, numbers and underscores only, starting with a letter. No spaces or symbols (such as - . ! @ #). " +
+                   "Not allowed: Windows reserved names (CON, PRN, AUX, NUL, COM1-9, LPT1-9), C++ keywords (class, int, ...), " +
+                   "or only changing the capitalisation.",
+        };
         static readonly string[] ActionVerbs = { "Build", "Regenerate", "Package", "Upgrade", "Rename" };
         readonly ComboBox actionBox = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList };
         Label nameLabel;
@@ -1206,6 +1214,8 @@ namespace UnrealProjectRenamer
             buildLocationBox.HandleCreated += (s, e) =>
                 SendMessage(buildLocationBox.Handle, EM_SETCUEBANNER, (IntPtr)1, "Choose a folder for the packaged game");
             nameLabel = AddRow(grid, "New name", Frame(nameBox), null);
+            nameNote.Margin = new Padding(3, 0, 3, 6);
+            AddRow(grid, "", nameNote, null);
 
             // A thin line under the Action group (Action, plus Rebuild Solution / Build / Clean cook content /
             // New name, depending on the action).
@@ -1381,6 +1391,7 @@ namespace UnrealProjectRenamer
             bool rename = act == Act.Rename;
             nameBox.Parent.Visible = rename; // the frame around the box
             if (nameLabel != null) nameLabel.Visible = rename;
+            nameNote.Visible = rename;
             previewButton.Visible = rename;
             // A rename or a regenerate deletes Binaries/Intermediate, so it always builds from scratch.
             rebuildBox.Visible = rebuildNote.Visible = act == Act.Build || act == Act.Package;
