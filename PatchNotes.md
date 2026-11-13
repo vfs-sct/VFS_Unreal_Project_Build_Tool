@@ -1,6 +1,8 @@
 # VFS Unreal Project Build Tool — Patch Notes
 
-Newest version first. Each pushed version gets its own section.
+[← Click here to return to the README](README.md)
+
+Newest version first.
 
 ---
 
