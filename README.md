@@ -21,7 +21,7 @@
 
 ### Summary
 
-- One app for Unreal Engine **C++ projects**. IDE (Visual Studio) and Unreal Editor are not required to be opened to perform any of these actions.
+- One app for Unreal Engine **C++ projects**. IDE (Visual Studio, Rider, etc) and Unreal Editor are not required to be opened to perform any of these actions.
 - Five actions:
   - **Build Solution**: compiles the project.
   - **Regenerate Visual Studio project files**: deletes the generated files, regenerates the project files, builds solution.
