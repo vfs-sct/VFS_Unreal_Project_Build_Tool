@@ -4,6 +4,17 @@
 
 ---
 
+### 0.20.0
+
+- Each action has a short grey description under the Action dropdown explaining what it does.
+- Rebuild Solution and Clean cook content have a short grey description under them too.
+- Package Build explains the selected configuration under the Build dropdown (Development for testing, Shipping for the public).
+- Unreal 5.8 and newer require Visual Studio 2026 or higher: picking an older Visual Studio shows a note under it and greys out the main button. 2026 is picked by default.
+- Problems that grey out the main button (under Visual Studio) are shown in red instead of gold.
+- New **Copy Output Log** button next to Save Output Log: copies the whole log to the clipboard. Greyed out while an action runs or the log is empty.
+
+---
+
 ### 0.19.0
 
 - Finds Unreal Engine versions that the Epic launcher installed but didn't register in Windows (e.g. UE 5.7 / 5.8 showing as "not installed"). The tool now also reads the launcher's own install list.

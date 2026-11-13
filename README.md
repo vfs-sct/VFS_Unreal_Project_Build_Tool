@@ -1,4 +1,4 @@
-# VFS Unreal Project Build Tool v0.19.0
+# VFS Unreal Project Build Tool v0.20.0
 
 ### Contents
 
@@ -38,7 +38,7 @@
 - A C++ Unreal Project.
 - Windows 10 or 11.
 - Unreal Engine 5 (Epic Games Launcher, or a registered source build).
-- Visual Studio 2022 or 2026 (depending on the Unreal version) with the **Game development with C++** workload.
+- Visual Studio with the **Game development with C++** workload: **2026 or higher for Unreal 5.8 and newer**; 2022 or 2026 for older versions.
 - `VFSUnrealProjectBuildTool.exe` (see [How To Install](#how-to-install)).
 
 ---
@@ -77,6 +77,7 @@
 - **Visual Studio** is picked for you. Change it only if you need a specific version.
 - **Cancel** stops a run. For builds and packaging nothing is lost.
 - **Save Output Log** saves the log as a `.txt` (useful when asking for help).
+- **Copy Output Log** copies the whole log, ready to paste into a message. Both are greyed out while an action runs.
 - **Open folder** opens the project folder, or the packaged build after Package Build.
 
 #### Build Solution
@@ -190,7 +191,7 @@ Use when Visual Studio or IntelliSense is confused.
 | **"errors in plugin: ..."** (after a failed build) | That project plugin doesn't compile with this engine, usually because it's built for an older one (common after an upgrade, e.g. FMOD). Get the plugin's version for your engine, replace its folder in `Plugins`, and run again. |
 | **"Checking for updates..." / "Updating to v..."** (on opening) | The app is checking for or installing a newer version; the new version opens by itself. Close that window to skip the update this time. |
 | **Update failed** (on opening) | The new version couldn't be installed, usually because the app's folder can't be written to (e.g. `Program Files`). Move the app to a folder you own, like Documents, or download it from GitHub. The current version still opens. |
-| **Build failed / Package failed / Regenerate failed** (popup) | The popup says which step failed (project files, build, cook or packaging). Look for `error` lines in the log, or click **Save Output Log** to share it. |
+| **Build failed / Package failed / Regenerate failed** (popup) | The popup says which step failed (project files, build, cook or packaging). Look for `error` lines in the log, or click **Save Output Log** / **Copy Output Log** to share it. |
 | **"warning: couldn't delete ..."** (Regenerate, Upgrade) | A file is in use. Close Visual Studio, Rider and the editor, then run it again. |
 | **"Choose a Build location for the packaged game"** (Package greyed out) | Build location is empty. Click **Browse...** and pick a folder. |
 | **"Pick the engine version to upgrade to"** (Upgrade greyed out) | No newer engine is installed, or the project already uses the selected one. |

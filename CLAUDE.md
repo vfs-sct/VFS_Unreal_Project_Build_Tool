@@ -165,6 +165,8 @@ The user asked for these specifically — keep them:
 - **Action** dropdown at the top (`actionBox`, `enum Act`, added 6 Nov): Build Solution,
   **Regenerate Visual Studio project files (default since 6 Nov; app reopens on the last action)**, Package Build, Upgrade Project Version, Rename
   Project. Settings store the enum names, so the order can change.
+  Under the dropdown, `actionNote` (grey, `Theme.Muted`) shows `ActionDescriptions[(int)act]`, set in
+  `ActionChanged` (added 13 Nov; `Theme.Apply` leaves Muted labels grey).
   **Upgrade Project Version** (`--action upgrade --engine-association X`, added 6 Nov): the **Engine
   version row shows only for this action** (`engineLabel` + its row; every other action uses the
   project's own engine — `SelectedEngine` ignores the dropdown for them, Run passes no
@@ -262,6 +264,9 @@ The user asked for these specifically — keep them:
   `<Project>_rename_log_<yyyy-MM-dd_HHmm>.txt` in the project folder), writes the log as UTF-8.
   Disabled while running and while the log is empty (`UpdateSaveLogButton`, also on
   `log.TextChanged`). `MainForm.AskSavePath` hook replaces the dialog in tests. Tested.
+- **Copy Output Log** button (added 13 Nov), after Save Output Log: `CopyLog` puts the log on the
+  clipboard as plain text with CRLF (`Clipboard.SetDataObject`, 10 retries). Enabled exactly like Save
+  (`UpdateSaveLogButton`: log not empty, nothing running). Tested in a separate process.
 - **Failure popup** (added 6 Nov): after a real rename that fails on its own, `ShowFailure`
   (through the `AskUser` hook) shows "Rename failed" (not renamed: the script's `error:` lines,
   "Nothing was changed"; a `Traceback` instead warns files may have changed) or "Rename needs
@@ -282,6 +287,9 @@ The user asked for these specifically — keep them:
   so tests can answer them.
 - **Visual Studio** dropdown under Engine version: all installs (vswhere), newest first,
   default = newest one usable by the chosen engine.
+  **User's rule (13 Nov): UE 5.8+ requires VS 2026 or higher** (`Requirements.NeedsVs2026From`, checked first in
+  `ProblemWith` using the engine's `Build.version`). Unreal itself still accepts 2022 for 5.8; this is a team
+  policy, app-only (the script doesn't enforce it). Tested: 5.8 + 2022 blocked with the note, 5.7 + 2022 allowed.
 
 Fixes added at the end of the session (from the "app edge cases" list):
 1. Refuses to rename while the project is open in Unreal Editor / Visual Studio / Rider

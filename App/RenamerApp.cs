@@ -29,7 +29,7 @@ namespace UnrealProjectRenamer
     static class Program
     {
         // App version: bump this for every build you hand out (major.minor.patch).
-        public const string Version = "0.19.0";
+        public const string Version = "0.20.0";
 
         [DllImport("user32.dll")]
         static extern bool SetProcessDPIAware();
@@ -247,10 +247,20 @@ namespace UnrealProjectRenamer
             public List<string> BannedMsvc = new List<string>();
             public Dictionary<string, string> MinVsByYear = new Dictionary<string, string>();
             public HashSet<string> SupportedYears;  // null = couldn't tell
+            public Version EngineVersion;           // major.minor from Engine/Build/Build.version; null = couldn't tell
+            // Our rule (not Unreal's): UE 5.8 and newer are built with Visual Studio 2026 or newer.
+            static readonly Version NeedsVs2026From = new Version(5, 8);
 
             public static Requirements Load(string engineDir, string engineName)
             {
                 var r = new Requirements { EngineName = engineName };
+                try
+                {
+                    var bv = new System.Web.Script.Serialization.JavaScriptSerializer().Deserialize<Dictionary<string, object>>(
+                        File.ReadAllText(System.IO.Path.Combine(engineDir, @"Engine\Build\Build.version")));
+                    r.EngineVersion = new Version(Convert.ToInt32(bv["MajorVersion"]), Convert.ToInt32(bv["MinorVersion"]));
+                }
+                catch { }
                 try
                 {
                     var json = File.ReadAllText(System.IO.Path.Combine(engineDir, @"Engine\Config\Windows\Windows_SDK.json"));
@@ -300,6 +310,10 @@ namespace UnrealProjectRenamer
             /// <summary>Why `vs` can't build for this engine, or null if it can.</summary>
             public string ProblemWith(VisualStudio vs)
             {
+                int year;
+                if (EngineVersion != null && EngineVersion >= NeedsVs2026From && int.TryParse(vs.Year, out year) && year < 2026)
+                    return EngineName + " requires Visual Studio 2026 or higher. Pick it above, or install it with the " +
+                           "\"Game development with C++\" workload.";
                 if (SupportedYears != null && SupportedYears.Count > 0 && !SupportedYears.Contains(vs.Year))
                     return EngineName + " doesn't support Visual Studio " + vs.Year + ".";
                 string min;
@@ -419,6 +433,7 @@ namespace UnrealProjectRenamer
         public static readonly Color Accent = Color.FromArgb(217, 119, 87);
         public static readonly Color AccentHover = Color.FromArgb(229, 137, 107);
         public static readonly Color Warn = Color.FromArgb(224, 164, 88);
+        public static readonly Color Error = Color.FromArgb(240, 90, 85);       // red: problems that block the main button
         public static readonly Color Highlight = Color.FromArgb(250, 204, 21); // yellow: the "check in the editor" list
 
         [DllImport("dwmapi.dll")]
@@ -446,7 +461,7 @@ namespace UnrealProjectRenamer
             if (root is Form || root is Panel || root is Label || root is TableLayoutPanel || root is FlowLayoutPanel)
             {
                 root.BackColor = Back;
-                if (root.ForeColor != Warn) root.ForeColor = Text;
+                if (root.ForeColor != Warn && root.ForeColor != Error && root.ForeColor != Muted) root.ForeColor = Text; // keep notes' colours
             }
             var tb = root as TextBoxBase; // text boxes and the rich-text log
             if (tb != null)
@@ -1018,10 +1033,23 @@ namespace UnrealProjectRenamer
         readonly ComboBox engineBox = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList };
         readonly Label engineNote = new Label { AutoSize = true, ForeColor = Theme.Warn };
         readonly ComboBox vsBox = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList };
-        readonly Label vsNote = new Label { AutoSize = true, ForeColor = Theme.Warn, MaximumSize = new Size(700, 0) };
+        readonly Label vsNote = new Label { AutoSize = true, ForeColor = Theme.Error, MaximumSize = new Size(700, 0) };
         // What the app does. Order is the order in the Action dropdown; Build Solution is the default.
         enum Act { Build, Regenerate, Package, Upgrade, Rename } // settings store these names, so the order can change
         static readonly string[] ActionNames = { "Build Solution", "Regenerate Visual Studio project files", "Package Build", "Upgrade Project Version", "Rename Project" };
+        // Shown in grey under the Action dropdown, in the same order as Act.
+        static readonly string[] ActionDescriptions =
+        {
+            "Compiles the project's C++ code for the editor, like Build in Visual Studio.",
+            "Deletes the generated files (.vs, Binaries, Intermediate, DerivedDataCache, .sln), makes fresh Visual Studio " +
+                "project files, then builds.",
+            "Builds, cooks the content and packages a Windows game into the Build location.",
+            "Upgrades the project to a newer installed Unreal Engine version, updates its build settings, regenerates the " +
+                "project files and builds. Can't be undone: commit first.",
+            "Renames the project (files, modules, code and config) and adds redirects so Blueprints and levels keep " +
+                "working, then builds and resaves assets. Commit first.",
+        };
+        readonly Label actionNote = new Label { AutoSize = true, ForeColor = Theme.Muted, MaximumSize = new Size(620, 0) };
         static readonly string[] ActionVerbs = { "Build", "Regenerate", "Package", "Upgrade", "Rename" };
         readonly ComboBox actionBox = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList };
         Label nameLabel;
@@ -1031,6 +1059,9 @@ namespace UnrealProjectRenamer
         bool runRebuild;            // whether that run was a rebuild
         // Build Solution and Package Build: clean, then build everything (Unreal's Rebuild). Off by default.
         readonly CheckBox rebuildBox = new DarkCheck { Text = "Rebuild Solution", AutoSize = true, Checked = false };
+        readonly Label rebuildNote = new Label { AutoSize = true, ForeColor = Theme.Muted, MaximumSize = new Size(620, 0),
+            Text = "Deletes the compiled code and builds everything from scratch. Slower; use it when a build gives " +
+                   "strange errors or C++ changes don't take effect." };
 
         // "On Finish Success" choices (see WhenDoneArgs).
         const string DoNothing = "Do nothing";
@@ -1052,15 +1083,27 @@ namespace UnrealProjectRenamer
         string autoBuildLocation;   // the location last filled in automatically (replaced when the project changes)
         // Package Build only: ticked = clean cook (delete old cooked data, cook everything);
         // unticked = only recook what changed.
+        // Shown in grey under the Build dropdown for the selected configuration (same order as BuildConfigs).
+        static readonly string[] BuildConfigDescriptions =
+        {
+            "For testing purposes; keeps the console, logging, visible draw traces, debug tools.",
+            "For public consumption; fastest, with no console, logging, visible draw traces, or debug tools.",
+        };
+        readonly Label buildConfigNote = new Label { AutoSize = true, ForeColor = Theme.Muted, MaximumSize = new Size(620, 0),
+                                                      Text = BuildConfigDescriptions[0] };
         readonly CheckBox cookContentBox = new DarkCheck { Text = "Clean cook content", AutoSize = true, Checked = false };
+        readonly Label cookContentNote = new Label { AutoSize = true, ForeColor = Theme.Muted, MaximumSize = new Size(620, 0),
+            Text = "Deletes the old cooked content and cooks every asset from scratch. Slower; when off, only changed " +
+                   "assets are recooked. Use it if the packaged game shows old or missing content." };
         readonly List<Panel> separators = new List<Panel>(); // thin lines between groups of fields
         string packageDir;          // where this rename's packaged build goes (asked when Rename is clicked)
         string packagedFolder;      // set after a successful package, for Open folder
-        readonly Button previewButton = new Button { Text = "Preview changes", AutoSize = true };
         readonly Button renameButton = new Button { Text = "Rename", AutoSize = true };
         readonly Button cancelButton = new Button { Text = "Cancel", AutoSize = true, Visible = false };
         readonly Button openButton = new Button { Text = "Open folder", AutoSize = true, Enabled = false };
+        readonly Button previewButton = new Button { Text = "Preview changes", AutoSize = true };
         readonly Button saveLogButton = new Button { Text = "Save Output Log", AutoSize = true, Enabled = false };
+        readonly Button copyLogButton = new Button { Text = "Copy Output Log", AutoSize = true, Enabled = false };
         readonly RichTextBox log = new RichTextBox(); // rich text so the final "Check in Unreal Editor" section can be yellow
         readonly Label status = new Label { AutoSize = true, Text = "Pick a .uproject to start." };
 
@@ -1113,16 +1156,26 @@ namespace UnrealProjectRenamer
             actionBox.Width = 260;
             actionBox.Margin = new Padding(3);
             AddRow(grid, "Action", Host(actionBox), null);
-            rebuildBox.Margin = new Padding(3, 6, 3, 6);
+            actionNote.Margin = new Padding(3, 0, 3, 6);
+            AddRow(grid, "", actionNote, null);
+            rebuildBox.Margin = new Padding(3, 6, 3, 0);
             AddRow(grid, "", rebuildBox, null);
+            rebuildNote.Margin = new Padding(3, 2, 3, 6);
+            AddRow(grid, "", rebuildNote, null);
 
             buildConfigBox.Items.AddRange(BuildConfigs);
+            buildConfigBox.SelectedIndexChanged += (s, e) =>
+                buildConfigNote.Text = BuildConfigDescriptions[Math.Max(0, buildConfigBox.SelectedIndex)];
             buildConfigBox.SelectedIndex = 0; // Development
             buildConfigBox.Width = 260;
             buildConfigBox.Margin = new Padding(3);
             buildConfigLabel = AddRow(grid, "Build", Host(buildConfigBox), null);
-            cookContentBox.Margin = new Padding(3, 6, 3, 6);
+            buildConfigNote.Margin = new Padding(3, 0, 3, 2);
+            AddRow(grid, "", buildConfigNote, null);
+            cookContentBox.Margin = new Padding(3, 6, 3, 0);
             AddRow(grid, "", cookContentBox, null);
+            cookContentNote.Margin = new Padding(3, 2, 3, 6);
+            AddRow(grid, "", cookContentNote, null);
             buildLocationLabel = AddRow(grid, "Build location", Frame(buildLocationBox), buildLocationBrowse);
 
             // New name belongs to Rename Project, so it sits in the Action group.
@@ -1159,7 +1212,7 @@ namespace UnrealProjectRenamer
 
             // Buttons start at the left edge, in line with the field labels, with a line under them.
             var buttons = new FlowLayoutPanel { AutoSize = true, Margin = new Padding(0, 0, 0, 4), WrapContents = false };
-            foreach (var b in new[] { previewButton, renameButton, cancelButton, openButton, saveLogButton })
+            foreach (var b in new[] { previewButton, renameButton, cancelButton, openButton, saveLogButton, copyLogButton })
             {
                 b.Margin = new Padding(0, 3, 6, 3);
                 buttons.Controls.Add(b);
@@ -1202,7 +1255,6 @@ namespace UnrealProjectRenamer
             nameBox.TextChanged += (s, e) => UpdateState();
             engineBox.SelectedIndexChanged += (s, e) => EngineChanged();
             vsBox.SelectedIndexChanged += (s, e) => UpdateState();
-            previewButton.Click += (s, e) => Run(true);
             renameButton.Click += (s, e) => StartAction();
             actionBox.SelectedIndexChanged += (s, e) => ActionChanged();
             rebuildBox.CheckedChanged += (s, e) => { UpdateMainButtonText(); UpdateState(); };
@@ -1221,7 +1273,9 @@ namespace UnrealProjectRenamer
                 "(faster). Turn it on if the packaged game shows old or missing content, or " +
                 "after renaming the project.");
             cancelButton.Click += (s, e) => CancelRun();
+            previewButton.Click += (s, e) => Run(true);
             saveLogButton.Click += (s, e) => SaveLog();
+            copyLogButton.Click += (s, e) => CopyLog();
             log.TextChanged += (s, e) => UpdateSaveLogButton();
             openButton.Click += (s, e) =>
             {
@@ -1254,7 +1308,7 @@ namespace UnrealProjectRenamer
             projectBox.Name = "projectBox"; nameBox.Name = "nameBox"; actionBox.Name = "actionBox"; buildConfigBox.Name = "buildConfigBox"; cookContentBox.Name = "cookContentBox"; rebuildBox.Name = "rebuildBox";
             engineBox.Name = "engineBox"; vsBox.Name = "vsBox"; whenDoneBox.Name = "whenDoneBox"; log.Name = "log"; status.Name = "status";
             previewButton.Name = "previewButton"; renameButton.Name = "renameButton"; openButton.Name = "openButton";
-            cancelButton.Name = "cancelButton"; vsNote.Name = "vsNote"; saveLogButton.Name = "saveLogButton";
+            cancelButton.Name = "cancelButton"; vsNote.Name = "vsNote"; saveLogButton.Name = "saveLogButton"; copyLogButton.Name = "copyLogButton";
 
             Theme.Apply(this);
             Theme.StyleButton(renameButton, true);
@@ -1270,7 +1324,7 @@ namespace UnrealProjectRenamer
             status.ForeColor = Theme.Muted;
             HandleCreated += (s, e) => Theme.DarkTitleBar(Handle);
 
-            vsNote.ForeColor = Theme.Warn;
+            vsNote.ForeColor = Theme.Error;
 
             FillEngines();
             FillVisualStudios();
@@ -1293,6 +1347,7 @@ namespace UnrealProjectRenamer
         void ActionChanged()
         {
             var act = CurrentAction;
+            actionNote.Text = ActionDescriptions[(int)act];
             // Save the action we're leaving first, while its own values are still on screen.
             if (settingsLoaded && act != shownAction) SaveFields(shownAction);
             bool rename = act == Act.Rename;
@@ -1300,11 +1355,12 @@ namespace UnrealProjectRenamer
             if (nameLabel != null) nameLabel.Visible = rename;
             previewButton.Visible = rename;
             // A rename or a regenerate deletes Binaries/Intermediate, so it always builds from scratch.
-            rebuildBox.Visible = act == Act.Build || act == Act.Package;
+            rebuildBox.Visible = rebuildNote.Visible = act == Act.Build || act == Act.Package;
             UpdateMainButtonText();
             bool package = act == Act.Package;
             buildConfigBox.Parent.Visible = package; // its host panel
-            cookContentBox.Visible = package;
+            buildConfigNote.Visible = package;
+            cookContentBox.Visible = cookContentNote.Visible = package;
             buildLocationBox.Parent.Visible = package; // its frame
             buildLocationBrowse.Visible = package;
             if (buildLocationLabel != null) buildLocationLabel.Visible = package;
@@ -1855,10 +1911,26 @@ namespace UnrealProjectRenamer
                    "\n\nThe renamed files are kept. Fix the problem, then build the project in Visual Studio or Unreal.";
         }
 
-        /// <summary>Save Output Log: only when there's a log and nothing is running.</summary>
+        /// <summary>Save / Copy Output Log: only when there's a log and nothing is running.</summary>
         void UpdateSaveLogButton()
         {
-            saveLogButton.Enabled = log.TextLength > 0 && (running == null || running.HasExited);
+            saveLogButton.Enabled = copyLogButton.Enabled = log.TextLength > 0 && (running == null || running.HasExited);
+        }
+
+        /// <summary>Copy Output Log: the whole log as plain text (Windows line endings) on the clipboard.</summary>
+        void CopyLog()
+        {
+            if (!copyLogButton.Enabled) return;
+            try
+            {
+                // Another app can hold the clipboard for a moment: retry a few times.
+                Clipboard.SetDataObject(string.Join(Environment.NewLine, log.Lines), true, 10, 100);
+                status.Text = "Output log copied to the clipboard.";
+            }
+            catch (Exception ex)
+            {
+                Notify(this, "Couldn't copy the log", ex.Message);
+            }
         }
 
         /// <summary>Hook so tests can pick the file instead of the Save dialog. Returns null to cancel.</summary>
