@@ -29,7 +29,7 @@ namespace UnrealProjectRenamer
     static class Program
     {
         // App version: bump this for every build you hand out (major.minor.patch).
-        public const string Version = "0.20.3";
+        public const string Version = "0.20.4";
 
         [DllImport("user32.dll")]
         static extern bool SetProcessDPIAware();
@@ -1414,6 +1414,7 @@ namespace UnrealProjectRenamer
         internal static string SettingsFile = Path.Combine( // replaceable so tests never touch the real file
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "VFSUnrealProjectBuildTool", "settings.json");
         Dictionary<string, Dictionary<string, string>> savedFields = new Dictionary<string, Dictionary<string, string>>();
+        string savedProject; // the project, shared by every action
         bool settingsLoaded;  // false until LoadSettings ran (so start-up doesn't save half-filled fields)
         Act shownAction;      // the action whose fields are on screen
 
@@ -1429,6 +1430,7 @@ namespace UnrealProjectRenamer
                         .Deserialize<Dictionary<string, object>>(File.ReadAllText(SettingsFile));
                     object v;
                     if (data.TryGetValue("LastAction", out v)) last = v as string;
+                    if (data.TryGetValue("Project", out v)) savedProject = v as string;
                     if (data.TryGetValue("Actions", out v) && v is Dictionary<string, object>)
                         foreach (var a in (Dictionary<string, object>)v)
                         {
@@ -1439,6 +1441,17 @@ namespace UnrealProjectRenamer
                 }
             }
             catch { } // unreadable settings: start with the defaults
+            // One project for every action. Settings from before 0.20.4 kept one per action: use the last-used
+            // action's (or any saved one).
+            if (string.IsNullOrEmpty(savedProject))
+            {
+                Dictionary<string, string> f;
+                string p;
+                if (last != null && savedFields.TryGetValue(last, out f) && f.TryGetValue("Project", out p) && p.Length > 0) savedProject = p;
+                else savedProject = savedFields.Values.Select(x => { string q; return x.TryGetValue("Project", out q) ? q : ""; })
+                                                     .FirstOrDefault(q => q.Length > 0);
+            }
+            if (!string.IsNullOrEmpty(savedProject) && savedProject != projectBox.Text) projectBox.Text = savedProject;
             shownAction = CurrentAction;
             settingsLoaded = true;
             Act lastAct;
@@ -1454,9 +1467,9 @@ namespace UnrealProjectRenamer
         {
             if (!settingsLoaded) return;
             var vs = vsBox.SelectedItem as Engines.VisualStudio;
+            savedProject = projectBox.Text; // shared by every action
             savedFields[act.ToString()] = new Dictionary<string, string>
             {
-                { "Project", projectBox.Text },
                 { "Engine", engineBox.SelectedIndex > 0 ? (string)engineBox.SelectedItem : "" },
                 { "VisualStudio", vs != null ? vs.Path : "" },
                 { "OnFinishSuccess", WhenDone },
@@ -1471,6 +1484,7 @@ namespace UnrealProjectRenamer
                 var json = new System.Web.Script.Serialization.JavaScriptSerializer().Serialize(new Dictionary<string, object>
                 {
                     { "LastAction", CurrentAction.ToString() },
+                    { "Project", savedProject ?? "" },
                     { "Actions", savedFields },
                 });
                 File.WriteAllText(SettingsFile, json, new UTF8Encoding(false));
@@ -1484,8 +1498,7 @@ namespace UnrealProjectRenamer
             Dictionary<string, string> f;
             if (!savedFields.TryGetValue(act.ToString(), out f)) return;
             string v;
-            // An empty saved project never clears the one on screen (it carries over instead).
-            if (f.TryGetValue("Project", out v) && v.Length > 0 && v != projectBox.Text) projectBox.Text = v; // also suggests engine / Build location
+            // The project isn't per action: it stays as it is on screen (saved once, at the top of settings.json).
             if (act == Act.Upgrade && f.TryGetValue("Engine", out v) && v.Length > 0) // only Upgrade picks an engine
             {
                 int i = v.Length == 0 ? 0 : engineBox.Items.IndexOf(v);

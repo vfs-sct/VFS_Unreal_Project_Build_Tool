@@ -4,6 +4,12 @@
 
 ---
 
+### 0.20.4
+
+- The project stays the same whatever the action. Before, each action remembered its own project, so switching actions could bring back an old one.
+
+---
+
 ### 0.20.3
 
 - "Pick a .uproject to start (or drag one onto this window)." shows in grey under the Project box while it's empty, instead of in the status line at the bottom.

@@ -210,7 +210,9 @@ The user asked for these specifically — keep them:
   buttons (`MatchFieldHeights`: text boxes sit in `Frame` panels, dropdowns in `Host` panels, because
   the table never re-measures a combo grown through ItemHeight and combos ignore MinimumSize).
 - **Remembered inputs, per action** (added 6 Nov): `%APPDATA%\VFSUnrealProjectBuildTool\settings.json`
-  holds `LastAction` and, for each action, Project, Engine, VisualStudio (install path),
+  holds `LastAction`, **one `Project` for every action** (the user's rule, 13 Nov: the .uproject stays the
+  same whatever the action; `savedProject`, read once in `LoadSettings`; older files with a Project per
+  action use the last-used action's), and, for each action, Engine, VisualStudio (install path),
   OnFinishSuccess, Rebuild, Build, CleanCook, BuildLocation. `ActionChanged` saves the action being
   left **before** touching the screen, resets the action options to their defaults (On Finish
   Success: Open in Editor, or Launch .exe for Package; Rebuild/Clean cook off; Development;
@@ -221,7 +223,7 @@ The user asked for these specifically — keep them:
   saved inputs, and switching saved the new action's default On Finish Success into the old action.
   Tested in-process with a scratch settings file (`MainForm.SettingsFile` is replaceable for that):
   each action keeps its own On Finish Success / Rebuild / Build across switches and restarts.
-  An empty saved Project never clears the project on screen (it carries over). New name is never
+  `RestoreFields` never touches the project. New name is never
   saved (the user's choice; an old saved NewName is ignored).
 - **Open folder** (`OpenFolderTarget`, set in `UpdateState`): greyed out with no project and during a
   run; opens the packaged build after a successful Package (reset when the project changes),
