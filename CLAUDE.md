@@ -28,6 +28,11 @@ names). Teammates get `VFSUnrealProjectBuildTool.exe` + `README.md`
    changes as short bullet points, newest version first. Then rebuild with
    `App\build.bat`, commit the bump with the rest, and push. Tell the user the old and new
    version and why.
+   **Exception: README-only changes don't change the version.** If everything since the last
+   push only touches `README.md` (and its `Docs/` screenshots), push it with the version as it
+   is: no bump, no new PatchNotes entry, no rebuild, README title unchanged. (Since the title's
+   version is what the app's self-update reads, an unchanged version also means nobody gets
+   a pointless "update".) Any change to the app, script or behaviour still gets a bump.
 2. This PC runs **SentinelOne**. On 4 Nov it flagged a Claude Code session, killed it and
    rolled back files the session had touched (IT cleared it the same day). The likely
    trigger: copying `cmd.exe` as `UnrealEditor.exe` to fake an open editor. **Never** copy

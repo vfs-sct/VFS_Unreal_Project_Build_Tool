@@ -1,5 +1,23 @@
 # VFS Unreal Project Build Tool v0.19.0
 
+### Contents
+
+- [Summary](#summary)
+- [Tools Required](#tools-required)
+- [Steps for each action](#steps-for-each-action)
+  - [Every action](#every-action)
+  - [Build Solution](#build-solution)
+  - [Regenerate Visual Studio project files](#regenerate-visual-studio-project-files)
+  - [Package Build](#package-build)
+  - [Upgrade Project Version](#upgrade-project-version)
+  - [Rename Project](#rename-project)
+- [Messages you might see](#messages-you-might-see)
+- [Limitations](#limitations)
+- [Patch Notes](PatchNotes.md)
+- [Known Issues](#known-issues)
+
+---
+
 ### Summary
 
 - One app for Unreal Engine **C++ projects**. No editor needed for building or packaging.
