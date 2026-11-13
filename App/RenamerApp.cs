@@ -29,7 +29,7 @@ namespace UnrealProjectRenamer
     static class Program
     {
         // App version: bump this for every build you hand out (major.minor.patch).
-        public const string Version = "0.21.0";
+        public const string Version = "0.21.1";
 
         [DllImport("user32.dll")]
         static extern bool SetProcessDPIAware();
@@ -1097,7 +1097,7 @@ namespace UnrealProjectRenamer
                                                       Text = BuildConfigDescriptions[0] };
         // Red, under the Development description: a Development build isn't for the public.
         readonly Label buildConfigWarning = new Label { AutoSize = true, ForeColor = Theme.Error, MaximumSize = new Size(620, 0),
-                                                        Text = "NOT IDEAL FOR PITCH N PLAY / STEAM / EPIC / ITCH.IO / VFS ARCADE BUILDS!" };
+                                                        Text = "USE SHIPPING FOR PITCH N PLAY / STEAM / EPIC / ITCH.IO / VFS ARCADE BUILDS!" };
         readonly CheckBox cookContentBox = new DarkCheck { Text = "Clean cook content", AutoSize = true, Checked = false };
         // Clean cook content is remembered per Build configuration (the user's choice, 13 Nov): switching between
         // Development and Shipping brings back each one's own tick. Shipping starts ticked.

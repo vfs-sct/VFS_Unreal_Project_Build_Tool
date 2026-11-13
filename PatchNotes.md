@@ -4,6 +4,12 @@
 
 ---
 
+### 0.21.1
+
+- The red line under Development now reads "USE SHIPPING FOR PITCH N PLAY / STEAM / EPIC / ITCH.IO / VFS ARCADE BUILDS!"
+
+---
+
 ### 0.21.0
 
 - The Development description adds: "Ideal for Milestone reviews so instructors can debug through your game if required."
