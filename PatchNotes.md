@@ -39,54 +39,76 @@
 - The README title shows the app version.
 - README section headings are one size smaller, so GitHub draws no line under them.
 
+---
+
 ### 0.18.0
 
 - README rewritten as short steps for each action, with 16 screenshots.
 - Rename refuses names that would break a project, before anything changes: Windows reserved names (CON, PRN, AUX, NUL, COM1-9, LPT1-9), C++ keywords, and changes that only alter capitalisation.
+
+---
 
 ### 0.17.1
 
 - Package Build ends with a short yellow "CONFIRM WORKING BUILD" note listing the packaged .exe.
 - The "old C++ names load through redirects" note only appears after a rename.
 
+---
+
 ### 0.17.0
 
 - The log ends with a yellow "CHECK IN UNREAL EDITOR" list: what to open and why (skipped or failed assets with their reason, resaved maps, start-up maps, the packaged .exe).
 - Save Output Log still writes plain text.
+
+---
 
 ### 0.16.2
 
 - Assets that saved with a warning count as saved, not FAILED.
 - Project-wide warnings (e.g. Gameplay Ability System's "No GameplayCueNotifyPaths") no longer count against the asset that happened to load first.
 
+---
+
 ### 0.16.1
 
 - Plugin check: no more false FAILs for plugins with no content (GameplayAbilities) or self-loaded modules (Streamline).
 - Skipped / failed assets show up to two "why:" lines with the actual warning.
 
+---
+
 ### 0.16.0
 
 - The app starts on "Regenerate Visual Studio project files" the first time; after that it reopens on the last action used.
+
+---
 
 ### 0.15.0
 
 - New action: **Upgrade Project Version**. Switches the project to a newer installed engine, cleans generated files, regenerates project files and builds. Downgrades are blocked.
 - Engine version only shows for Upgrade; other actions use the project's own engine.
 
+---
+
 ### 0.14.0
 
 - New action: **Regenerate Visual Studio project files**. Deletes `.vs`, `Binaries`, `DerivedDataCache`, `Intermediate`, `.vsconfig` and `.sln`/`.slnx`, regenerates and builds.
 - Open folder opens the packaged build after a successful Package, otherwise the project folder.
+
+---
 
 ### 0.13.1
 
 - Each action keeps its own saved inputs correctly when switching actions and on restart.
 - Package is greyed out while Build location is empty.
 
+---
+
 ### 0.13.0
 
 - Fixed a crash when clicking Browse next to an empty Build location.
 - Packaged builds default to `<project>\Builds`.
+
+---
 
 ### 0.12.0
 
@@ -95,9 +117,13 @@
 - Remembers each action's last inputs.
 - Rename also deletes Rider's `.idea` cache and skips locked files with a warning instead of stopping.
 
+---
+
 ### 0.11.0
 
 - A popup appears when a rename fails or needs attention, with the reason and a Save Output Log button.
+
+---
 
 ### 0.10.0
 
@@ -106,9 +132,13 @@
 - New name capped at 20 characters; inputs greyed out while a run is going.
 - Fixed the plugin check failing healthy code-only plugins.
 
+---
+
 ### 0.9.1
 
 - Handles project plugins more safely when renaming: names a plugin declares itself stay unchanged, and plugins that reference the game only from config are updated too.
+
+---
 
 ### 0.9.0
 
