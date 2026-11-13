@@ -2,8 +2,6 @@
 
 [← Click here to return to the README](README.md)
 
-Newest version first.
-
 ---
 
 ### 0.19.0
