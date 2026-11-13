@@ -77,7 +77,7 @@
 - **Visual Studio** is picked for you. Change it only if you need a specific version.
 - **Cancel** stops a run. For builds and packaging nothing is lost.
 - **Save Output Log** saves the log as a `.txt` (useful when asking for help).
-- **Copy Output Log** copies the whole log, ready to paste into a message. Both are greyed out while an action runs.
+- **Copy Output Log** copies the whole log, ready to paste into a message.
 - **Open folder** opens the project folder, or the packaged build after Package Build.
 
 #### Build Solution
