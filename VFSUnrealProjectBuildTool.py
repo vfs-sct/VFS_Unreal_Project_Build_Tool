@@ -1564,14 +1564,242 @@ def upgrade_target_files(uproject: Path, engine_dir: Path | None) -> list[str]:
     return changes
 
 
+# --------------------------------------------------------------------------- importing plugins
+
+def ini_get(path: Path, section: str, key: str) -> str | None:
+    """The value of `key=` in `[section]` of an .ini file (None if the file, section or key isn't there)."""
+    if not path.exists():
+        return None
+    current = None
+    for line in read_text(path)[0].splitlines():
+        s = line.strip()
+        if s.startswith("[") and s.endswith("]"):
+            current = s[1:-1]
+        elif current == section and re.match(re.escape(key) + r"\s*=", s):
+            return s.split("=", 1)[1].strip()
+    return None
+
+
+def ini_set(path: Path, section: str, key: str, value: str) -> None:
+    """Set `key=value` in `[section]`: replaces the key's line, or adds it (and the section) if missing.
+    Keeps the file's encoding and line endings; creates the file if needed."""
+    if path.exists():
+        text, enc = read_text(path)
+    else:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        text, enc = "", "utf-8"
+    nl = "\r\n" if "\r\n" in text else "\n"
+    lines = text.split(nl)
+    current, header, done = None, None, False
+    for i, line in enumerate(lines):
+        s = line.strip()
+        if s.startswith("[") and s.endswith("]"):
+            current = s[1:-1]
+            if current == section and header is None:
+                header = i
+        elif current == section and re.match(re.escape(key) + r"\s*=", s):
+            lines[i] = f"{key}={value}"
+            done = True
+            break
+    if not done:
+        if header is not None:
+            lines.insert(header + 1, f"{key}={value}")
+        else:
+            while lines and lines[-1].strip() == "":
+                lines.pop()
+            lines += ([""] if lines else []) + [f"[{section}]", f"{key}={value}", ""]
+    new_text = nl.join(lines)
+    if not new_text.endswith(nl):
+        new_text += nl
+    write_text(path, new_text, enc)
+
+
+WARMUP_MAP = "/ShaderWarmup/L_ShaderWarmup.L_ShaderWarmup"
+MAPS_SECTION = "/Script/EngineSettings.GameMapsSettings"
+WARMUP_SECTION = "/Script/ShaderWarmup.ShaderWarmupSettings"
+
+
+def setup_shader_warmup(root: Path) -> None:
+    """Make the warm-up screen the game's first map and send it on to the project's old first map:
+    Game Default Map (DefaultEngine.ini) -> L_ShaderWarmup, Next Level (DefaultGame.ini) -> the old Game Default Map.
+    Anything it can't work out is left alone and added to the yellow list instead."""
+    engine_ini, game_ini = root / "Config" / "DefaultEngine.ini", root / "Config" / "DefaultGame.ini"
+    print("  setting up Shader Warmup:")
+    current = (ini_get(engine_ini, MAPS_SECTION, "GameDefaultMap") or "").strip("\"'")
+    next_level = (ini_get(game_ini, WARMUP_SECTION, "NextLevel") or "").strip("\"'")
+    current_pkg = current.split(".")[0]
+
+    if not next_level:
+        if current_pkg.startswith("/Game/") and is_map(root, current_pkg):
+            next_level = f"{current_pkg}.{current_pkg.rsplit('/', 1)[1]}"
+            ini_set(game_ini, WARMUP_SECTION, "NextLevel", next_level)
+            print(f"    Next Level: {next_level} (your old Game Default Map; Config/DefaultGame.ini)")
+        else:
+            print("    Next Level: not set - the project has no Game Default Map of its own to open after the warm-up")
+    else:
+        print(f"    Next Level: {next_level} (already set; kept)")
+
+    if current_pkg == WARMUP_MAP.split(".")[0]:
+        print("    Game Default Map: L_ShaderWarmup (already set; kept)")
+    elif next_level:
+        ini_set(engine_ini, MAPS_SECTION, "GameDefaultMap", WARMUP_MAP)
+        print(f"    Game Default Map: {current or '(none)'} -> {WARMUP_MAP} (Config/DefaultEngine.ini)")
+    else:
+        print("    Game Default Map: not changed (with no Next Level the warm-up screen would never move on)")
+
+    if next_level:
+        note_check("Shader Warmup", f"Launch the game in Standalone (or package it): the warm-up screen shows first, "
+                   f"then {next_level.split('.')[0]} opens. Change either in Project Settings > Maps & Modes "
+                   "(Game Default Map) and Project Settings > Plugins > Shader Warmup (Next Level).")
+    else:
+        note_check("Project Settings > Plugins > Shader Warmup",
+                   "Set Next Level to your main menu or first level, or the warm-up screen never moves on.")
+        note_check("Project Settings > Maps & Modes",
+                   "Then set Game Default Map to L_ShaderWarmup (turn on Settings > Show Plugin Content in the "
+                   "Content Browser to see it). Don't make it the Editor Startup Map.")
+
+
+# Plugins --action import-plugin can download, by the name of their .uplugin. Each repo's zip must contain
+# <name>.uplugin (at its root or in a folder); that folder becomes <project>/Plugins/<name>.
+# "setup" (optional) runs after the copy, with the project folder.
+PLUGIN_SOURCES = {
+    # Shown as "Gameplay Message Subsystem"; its .uplugin is GameplayMessageRouter (Epic's name, kept on purpose).
+    "GameplayMessageRouter": {
+        "title": "Gameplay Message Subsystem",
+        "zip": "https://codeload.github.com/vfs-sct/Unreal_Plugin_GameplayMessageSubsystem/zip/refs/heads/main",
+        "repo": "https://github.com/vfs-sct/Unreal_Plugin_GameplayMessageSubsystem",
+        "checks": [("Edit > Plugins > Gameplay Message Subsystem",
+                    "Check it's enabled, then search a Blueprint for Broadcast Message and Listen for Gameplay "
+                    "Messages to confirm its nodes are there.")],
+    },
+    "ShaderWarmup": {
+        "title": "Shader Warmup",
+        "zip": "https://codeload.github.com/vfs-sct/Unreal_Plugin_ShaderWarmup/zip/refs/heads/main",
+        "repo": "https://github.com/vfs-sct/Unreal_Plugin_ShaderWarmup",
+        "setup": setup_shader_warmup,
+    },
+}
+
+
+def download_plugin(url: str, dest: Path) -> Path:
+    """Download a repo zip to <dest>/plugin.zip and extract it to <dest>/x. Returns the extracted folder."""
+    import urllib.request
+    import zipfile
+    dest.mkdir(parents=True, exist_ok=True)
+    zip_path = dest / "plugin.zip"
+    req = urllib.request.Request(url, headers={"User-Agent": "VFSUnrealProjectBuildTool"})
+    with urllib.request.urlopen(req, timeout=60) as r, open(zip_path, "wb") as f:
+        shutil.copyfileobj(r, f)
+    out = dest / "x"
+    with zipfile.ZipFile(zip_path) as z:
+        root = out.resolve()
+        for member in z.namelist():  # never write outside the extraction folder
+            if not (out / member).resolve().is_relative_to(root):
+                raise ValueError(f"unsafe path in the download: {member}")
+        z.extractall(out)
+    return out
+
+
+def import_plugin(uproject: Path, key: str, staging: Path) -> int:
+    """Download the plugin <key> and put it in <project>/Plugins/<key>, replacing an existing copy.
+    Returns 0, or 1 if nothing was changed."""
+    src = PLUGIN_SOURCES.get(key)
+    if src is None:
+        print(f"\nerror: unknown plugin '{key}' (known: {', '.join(PLUGIN_SOURCES)})")
+        print("\nNothing was changed.")
+        return 1
+    root = uproject.parent
+    print(f"  plugin: {src['title']} ({src['repo']})")
+    # The tool only builds C++ projects (no Source/*.Target.cs = Blueprint-only, refused).
+    if not any((root / "Source").glob("*.Target.cs")):
+        print(f"\nerror: '{uproject.stem}' isn't a C++ project (no Source/*.Target.cs), so {src['title']} can't be "
+              "built for it. Add a C++ class once in the editor (Tools > New C++ Class), then import again.")
+        print("\nNothing was changed.")
+        return 1
+
+    print(f"\nDownloading {src['title']}...")
+    try:
+        extracted = download_plugin(src["zip"], staging)
+    except Exception as e:
+        print(f"\nerror: couldn't download {src['title']}: {e}")
+        print("\nNothing was changed.")
+        return 1
+    found = sorted(extracted.rglob(f"{key}.uplugin"), key=lambda p: len(p.parts))
+    if not found:
+        print(f"\nerror: the download has no {key}.uplugin")
+        print("\nNothing was changed.")
+        return 1
+    plugin_src = found[0].parent
+
+    plugins_dir = root / "Plugins"
+    print(f"\nInstalling into Plugins/{key}...")  # the app can't be stopped from here until "Imported:"
+    if not plugins_dir.exists():
+        print("  the project has no Plugins folder: creating it")
+    plugins_dir.mkdir(parents=True, exist_ok=True)
+    dest = plugins_dir / key
+    # An older copy (anywhere under Plugins/) is replaced, so two plugins with the same name never clash. Each is
+    # first renamed out of Plugins/ (all or nothing: a locked file stops here with nothing changed), then deleted.
+    existing = sorted({p.parent for p in plugins_dir.rglob(f"{key}.uplugin")}, key=lambda p: len(p.parts))
+    if dest.exists() and dest not in existing:
+        existing.append(dest)
+    if existing:
+        trash_dir = root / "Intermediate" / "ReplacedPlugins"
+        trash_dir.mkdir(parents=True, exist_ok=True)
+        moved: list[tuple[Path, Path]] = []  # (where it went, where it was)
+        for old in existing:
+            n = 0
+            while (trash_dir / f"{old.name}_{n}").exists():
+                n += 1
+            target = trash_dir / f"{old.name}_{n}"
+            try:
+                os.rename(old, target)
+            except OSError as e:
+                for back, was in reversed(moved):  # put any already moved back where they were
+                    try:
+                        os.rename(back, was)
+                    except OSError:
+                        pass
+                print(f"\nerror: couldn't replace the existing {old.relative_to(root)} ({e.strerror or e}). Close "
+                      "the editor, Visual Studio and Rider, then try again.")
+                print("\nNothing was changed.")
+                return 1
+            moved.append((target, old))
+        for target, old in moved:
+            print(f"  replacing the existing {old.relative_to(root)}")
+        for problem in delete_paths([t for t, _ in moved]):
+            print(f"  warning: couldn't delete the old copy in Intermediate/ReplacedPlugins ({problem})")
+    shutil.copytree(plugin_src, dest)
+    print(f"  copied to {dest.relative_to(root)}")
+
+    # A project that lists the plugin as disabled would ignore it.
+    try:
+        data = json.loads(read_text(uproject)[0])
+        for p in data.get("Plugins", []):
+            if p.get("Name", "").lower() == key.lower() and p.get("Enabled") is False:
+                print(f"  warning: {uproject.name} lists {key} as disabled; enable it in Edit > Plugins")
+    except Exception:
+        pass
+    for what, why in src.get("checks", []):
+        note_check(what, why)
+    if src.get("setup"):
+        src["setup"](root)
+    print(f"  Imported: {dest}")  # the app allows Cancel again from here
+    return 0
+
+
 def run_action(args, uproject: Path) -> int:
     """--action build/rebuild/package: no rename, just the follow-up steps on the project as it is.
     Returns 0, 1 if refused before anything ran, or 2 if a step failed."""
     names = {"build": "Building", "rebuild": "Rebuilding", "package": "Building and packaging",
              "regenerate": "Regenerating Visual Studio project files for",
-             "upgrade": "Upgrading the engine version of"}
+             "upgrade": "Upgrading the engine version of",
+             "import-plugin": "Importing a plugin into"}
     print(f"{names[args.action]} '{uproject.stem}'")
     print(f"  project: {uproject}")
+    if args.action == "import-plugin" and not args.plugin:
+        print("\nerror: --action import-plugin needs --plugin (e.g. ShaderWarmup)")
+        print("\nNothing was changed.")
+        return 1
     old_assoc = read_association(uproject)
     if args.action == "upgrade":
         if not args.engine_association:
@@ -1610,6 +1838,15 @@ def run_action(args, uproject: Path) -> int:
         print(f"  engine: {old_assoc or '(none)'}")
     if args.action == "package" and not (args.package or args.cook):
         print("  (no cook or package step chosen: building only)")
+    if args.action == "import-plugin":
+        import tempfile
+        staging = Path(tempfile.mkdtemp(prefix="vfs_plugin_"))
+        try:
+            code = import_plugin(uproject, args.plugin, staging)
+        finally:
+            shutil.rmtree(staging, ignore_errors=True)
+        if code != 0:
+            return code
 
     problems: list[str] = []
     if args.action in ("regenerate", "upgrade"):
@@ -1642,11 +1879,14 @@ def main() -> int:
     ap.add_argument("project", help="path to the .uproject file or the folder that contains it")
     ap.add_argument("new_name", nargs="?",
                     help="new project name (letters, digits, underscores; starts with a letter). Not used with --action")
-    ap.add_argument("--action", choices=["build", "rebuild", "package", "regenerate", "upgrade"],
+    ap.add_argument("--action", choices=["build", "rebuild", "package", "regenerate", "upgrade", "import-plugin"],
                     help="don't rename: build, rebuild (clean + build), build then cook/package, or regenerate "
                          "(delete .vs, Binaries, DerivedDataCache, Intermediate, .vsconfig, .sln/.slnx; then use "
                          "--generate-project-files --build) the project as it is. "
                          "Combine with --generate-project-files, --package/--cook, --open-editor, --engine-association")
+    ap.add_argument("--plugin", choices=sorted(PLUGIN_SOURCES),
+                    help="with --action import-plugin: the plugin to download into <project>/Plugins (add "
+                         "--generate-project-files --build to build it)")
     ap.add_argument("--launch", action="store_true", help="with --package, start the packaged game when it's done")
     ap.add_argument("--rebuild", action="store_true",
                     help="with --action build/package: clean, then build everything (like Visual Studio's Rebuild)")
@@ -1961,7 +2201,8 @@ def after_rename(args, new_uproject: Path) -> int:
 
     todo = []
     if not args.generate_project_files:
-        todo.append("Right-click the new .uproject -> 'Generate Visual Studio project files'")
+        todo.append(f"Right-click {'the new .uproject' if getattr(args, 'action', None) is None else new_uproject.name}"
+                    " -> 'Generate Visual Studio project files'")
     if bad_plugins:
         ver = engine_version(read_association(new_uproject))
         engine_name = f"UE {ver[0]}.{ver[1]}" if ver else "this engine"

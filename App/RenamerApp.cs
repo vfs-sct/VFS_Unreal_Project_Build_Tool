@@ -29,7 +29,7 @@ namespace UnrealProjectRenamer
     static class Program
     {
         // App version: bump this for every build you hand out (major.minor.patch).
-        public const string Version = "0.21.3";
+        public const string Version = "0.22.0";
 
         [DllImport("user32.dll")]
         static extern bool SetProcessDPIAware();
@@ -522,6 +522,25 @@ namespace UnrealProjectRenamer
             paint();
             b.EnabledChanged += (s, e) => paint();
         }
+
+        /// <summary>A gold button (the Highlight yellow) with dark text, e.g. View Readme. Grey like the others when disabled.</summary>
+        public static void StyleGoldButton(Button b)
+        {
+            StyleButton(b, false);
+            Action paint = () =>
+            {
+                bool on = b.Enabled;
+                b.BackColor = on ? Highlight : Raised;
+                b.ForeColor = on ? Color.FromArgb(28, 24, 10) : Disabled;
+                b.FlatAppearance.BorderColor = on ? Highlight : Border;
+                b.FlatAppearance.MouseOverBackColor = on ? GoldHover : Hover;
+                b.FlatAppearance.MouseDownBackColor = on ? GoldDown : Border;
+            };
+            paint();
+            b.EnabledChanged += (s, e) => paint();
+        }
+        static readonly Color GoldHover = Color.FromArgb(252, 216, 77);
+        static readonly Color GoldDown = Color.FromArgb(234, 179, 8);
 
         static void StyleCheck(FlatButtonAppearance fa, ButtonBase c)
         {
@@ -1038,8 +1057,12 @@ namespace UnrealProjectRenamer
         // remembered/typed project can't be found. Hidden once a project is picked.
         readonly Label projectNote = new Label { AutoSize = true, ForeColor = Theme.Error, MaximumSize = new Size(700, 0), Visible = false };
         // What the app does. Order is the order in the Action dropdown; Build Solution is the default.
-        enum Act { Build, Regenerate, Package, Upgrade, Rename } // settings store these names, so the order can change
-        static readonly string[] ActionNames = { "Build Solution", "Regenerate Visual Studio project files", "Package Build", "Upgrade Project Version", "Rename Project" };
+        enum Act { Build, Regenerate, Package, Upgrade, Rename, ImportPlugin, Import } // settings store these names, so the order can change
+        static readonly string[] ActionNames = { "Build Solution", "Regenerate Visual Studio Project Files", "Package Build", "Upgrade Project Version", "Rename Project", "Import Plugin", "Import VFS Assets" };
+        /// <summary>The import actions: placeholders so far, no build (so no Visual Studio row).</summary>
+        static bool IsImport(Act act) { return act == Act.Import || act == Act.ImportPlugin; }
+        /// <summary>Actions left out of the Action dropdown for now. Keep them last in Act.</summary>
+        static bool IsHidden(Act act) { return act == Act.Import; }
         // Shown in grey under the Action dropdown, in the same order as Act.
         static readonly string[] ActionDescriptions =
         {
@@ -1051,6 +1074,8 @@ namespace UnrealProjectRenamer
                 "project files and builds. Can't be undone: commit first.",
             "Renames the project (files, modules, code and config) and adds redirects so Blueprints and levels keep " +
                 "working, then builds and resaves assets. Commit first.",
+            "Downloads the plugin into the project's Plugins folder. An older copy of it is replaced.",
+            "Imports VFS assets into the project. Not available yet.", // placeholder: does nothing so far
         };
         readonly Label actionNote = new Label { AutoSize = true, ForeColor = Theme.Muted, MaximumSize = new Size(620, 0) };
         // Under New name (Rename Project only): what a name may contain, matching ValidName and NewNameProblem.
@@ -1061,12 +1086,13 @@ namespace UnrealProjectRenamer
                    "Not allowed: Windows reserved names (CON, PRN, AUX, NUL, COM1-9, LPT1-9), C++ keywords (class, int, ...), " +
                    "or only changing the capitalisation.",
         };
-        static readonly string[] ActionVerbs = { "Build", "Regenerate", "Package", "Upgrade", "Rename" };
+        static readonly string[] ActionVerbs = { "Build", "Regenerate", "Package", "Upgrade", "Rename", "Import", "Import" };
         readonly ComboBox actionBox = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList };
         Label nameLabel;
         Act runAction;              // the action of the run in progress (or the last one)
         Label engineLabel;          // the Engine version row is shown for Upgrade Project Version only
         string upgradedTo;          // the engine an Upgrade run switches to, e.g. "UE 5.8"
+        string importedPlugin;      // the plugin an Import Plugin run imports, e.g. "Shader Warmup"
         bool runRebuild;            // whether that run was a rebuild
         // Build Solution and Package Build: clean, then build everything (Unreal's Rebuild). Off by default.
         readonly CheckBox rebuildBox = new DarkCheck { Text = "Rebuild Solution", AutoSize = true, Checked = false };
@@ -1081,12 +1107,61 @@ namespace UnrealProjectRenamer
         static readonly string[] BasicWhenDone = { DoNothing, OpenEditor };
         static readonly string[] PackageWhenDone = { DoNothing, OpenEditor, LaunchExe };
         const int PackageWhenDoneDefault = 2; // Launch .exe
+        const string BuildSolution = "Build Solution";
+        static readonly string[] PluginWhenDone = { DoNothing, BuildSolution }; // Import Plugin
+        const int PluginWhenDoneDefault = 1; // Build Solution
         readonly ComboBox whenDoneBox = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList };
+        // "Then" (Import Plugin only), under On Finish Success: what to do after that. Open in Editor is the default.
+        static readonly string[] ThenChoices = { DoNothing, OpenEditor };
+        const int ThenDefault = 1; // Open in Unreal Editor when done
+        readonly ComboBox thenBox = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList };
+        Label thenLabel;
 
         // Build field (Package Build only): which configuration to package. Development is the default.
         static readonly string[] BuildConfigs = { "Development", "Shipping" };
         readonly ComboBox buildConfigBox = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList };
         Label buildConfigLabel;
+        // Asset field (Import VFS Assets only): which VFS assets to import.
+        static readonly string[] AssetNames = { "VFS Shaders" };
+        readonly ComboBox assetBox = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList };
+        Label assetLabel;
+        // Shown in grey under the Asset dropdown, in the same order as AssetNames ("" = no note yet).
+        static readonly string[] AssetDescriptions =
+        {
+            "VFS Landscape shader and VFS Uber shader taught in Jeff's classes",
+        };
+        readonly Label assetNote = new Label { AutoSize = true, ForeColor = Theme.Muted, MaximumSize = new Size(620, 0) };
+        // Plugin field (Import Plugin only): which plugin to import.
+        static readonly string[] PluginNames = { "Gameplay Message Subsystem", "Shader Warmup" };
+        // The script's --plugin name for each (its PLUGIN_SOURCES), in the same order; null = can't be imported yet.
+        // Gameplay Message Subsystem's .uplugin is GameplayMessageRouter (Epic's name, kept on purpose).
+        static readonly string[] PluginKeys = { "GameplayMessageRouter", "ShaderWarmup" };
+        // Each plugin's README on GitHub (the Readme button), in the same order; null = none yet (button greyed out).
+        static readonly string[] PluginReadmes =
+        {
+            "https://github.com/vfs-sct/Unreal_Plugin_GameplayMessageSubsystem/blob/main/README.md",
+            "https://github.com/vfs-sct/Unreal_Plugin_ShaderWarmup/blob/main/README.md",
+        };
+        readonly Button pluginReadme = new Button { Text = "View Readme", AutoSize = true };
+        readonly ComboBox pluginBox = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList };
+        Label pluginLabel;
+        // Shown in grey under the Plugin dropdown, in the same order as PluginNames ("" = no note yet).
+        static readonly string[] PluginDescriptions =
+        {
+            "A decoupled, publish-subscribe communication system plugin from the Lyra project taught in Steven's classes.",
+            "A C++ plugin that allows your project to precompile all shaders on boot up. " +
+                "Includes UI for you to set display while shaders are compiling.\n" + ShaderWarmupWarning,
+        };
+        // What importing Shader Warmup changes in the project (shown under Plugin and in the Import confirmation).
+        const string ShaderWarmupWarning =
+            "Warning: importing it changes your project's Game Default Map to the warm-up screen (L_ShaderWarmup). " +
+            "Your current Game Default Map becomes the level it opens when the shaders are ready.";
+        // Extra warning per plugin for the Import confirmation, in the same order as PluginNames (null = none).
+        static readonly string[] PluginWarnings = { null, ShaderWarmupWarning };
+        readonly Label pluginNote = new Label { AutoSize = true, ForeColor = Theme.Muted, MaximumSize = new Size(620, 0) };
+        // The Visual Studio row and the line under it: hidden for Import VFS assets (nothing to build).
+        Label vsLabel;
+        Control vsSeparator;
         // Package Build only: where the packaged game goes. Filled with <project>\Packaged when a project is picked.
         readonly TextBox buildLocationBox = new TextBox();
         readonly Button buildLocationBrowse = new Button { Text = "Browse...", AutoSize = true };
@@ -1174,13 +1249,37 @@ namespace UnrealProjectRenamer
             AddRow(grid, "", projectNote, null);
             AddSeparator(grid);
 
-            actionBox.Items.AddRange(ActionNames);
+            // Hidden actions (Import VFS Assets, not ready yet) must stay at the end of Act, so the dropdown's
+            // index still equals (int)Act for every action shown.
+            actionBox.Items.AddRange(ActionNames.Where((n, i) => !IsHidden((Act)i)).ToArray());
             actionBox.SelectedIndex = (int)Act.Regenerate; // the default action (until settings restore the last one)
             actionBox.Width = 260;
             actionBox.Margin = new Padding(3);
             AddRow(grid, "Action", Host(actionBox), null);
             actionNote.Margin = new Padding(3, 0, 3, 6);
             AddRow(grid, "", actionNote, null);
+            pluginBox.Items.AddRange(PluginNames);
+            pluginBox.SelectedIndexChanged += (s, e) => { ShowPluginNote(); UpdateState(); };
+            pluginBox.SelectedIndex = 0; // Gameplay Message Subsystem
+            pluginBox.Width = 260;
+            pluginBox.Margin = new Padding(3);
+            // The dropdown with View Readme right next to it.
+            var pluginPanel = new FlowLayoutPanel { AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, Margin = new Padding(0), WrapContents = false };
+            pluginPanel.Controls.Add(Host(pluginBox));
+            pluginReadme.Margin = new Padding(6, 3, 3, 3);
+            pluginPanel.Controls.Add(pluginReadme);
+            pluginLabel = AddRow(grid, "Plugin", pluginPanel, null); // Import Plugin only
+            pluginReadme.Click += (s, e) => OpenPluginReadme();
+            pluginNote.Margin = new Padding(3, 0, 3, 6);
+            AddRow(grid, "", pluginNote, null);
+            assetBox.Items.AddRange(AssetNames);
+            assetBox.SelectedIndexChanged += (s, e) => ShowAssetNote();
+            assetBox.SelectedIndex = 0; // VFS Shaders
+            assetBox.Width = 260;
+            assetBox.Margin = new Padding(3);
+            assetLabel = AddRow(grid, "Asset", Host(assetBox), null); // Import VFS assets only
+            assetNote.Margin = new Padding(3, 0, 3, 6);
+            AddRow(grid, "", assetNote, null);
             rebuildBox.Margin = new Padding(3, 6, 3, 0);
             AddRow(grid, "", rebuildBox, null);
             rebuildNote.Margin = new Padding(3, 2, 3, 6);
@@ -1230,16 +1329,23 @@ namespace UnrealProjectRenamer
 
             vsBox.Width = 360;
             vsBox.Margin = new Padding(3);
-            AddRow(grid, "Visual Studio", Host(vsBox), null);
+            vsLabel = AddRow(grid, "Visual Studio", Host(vsBox), null);
             vsNote.Margin = new Padding(3, 0, 3, 6);
             AddRow(grid, "", vsNote, null);
 
             // And one above On Finish Success.
             AddSeparator(grid);
+            vsSeparator = separators[separators.Count - 1];
 
             whenDoneBox.Width = 520;
             whenDoneBox.Margin = new Padding(3);
             AddRow(grid, "On Finish Success", Host(whenDoneBox), null);
+            thenBox.Items.AddRange(ThenChoices);
+            thenBox.SelectedIndex = ThenDefault;
+            thenBox.Width = 520;
+            thenBox.Margin = new Padding(3);
+            thenLabel = AddRow(grid, "Then", Host(thenBox), null); // Import Plugin only, and not after "Do nothing"
+            whenDoneBox.SelectedIndexChanged += (s, e) => { ShowThen(); UpdateState(); };
             AddSeparator(grid);
 
             // Buttons start at the left edge, in line with the field labels, with a line under them.
@@ -1343,13 +1449,14 @@ namespace UnrealProjectRenamer
             };
 
             // Names double as UI Automation ids (used by accessibility tools and tests).
-            projectBox.Name = "projectBox"; nameBox.Name = "nameBox"; actionBox.Name = "actionBox"; buildConfigBox.Name = "buildConfigBox"; cookContentBox.Name = "cookContentBox"; rebuildBox.Name = "rebuildBox";
-            engineBox.Name = "engineBox"; vsBox.Name = "vsBox"; whenDoneBox.Name = "whenDoneBox"; log.Name = "log"; status.Name = "status";
+            projectBox.Name = "projectBox"; nameBox.Name = "nameBox"; actionBox.Name = "actionBox"; buildConfigBox.Name = "buildConfigBox"; assetBox.Name = "assetBox"; pluginBox.Name = "pluginBox"; cookContentBox.Name = "cookContentBox"; rebuildBox.Name = "rebuildBox";
+            engineBox.Name = "engineBox"; vsBox.Name = "vsBox"; whenDoneBox.Name = "whenDoneBox"; thenBox.Name = "thenBox"; log.Name = "log"; status.Name = "status";
             previewButton.Name = "previewButton"; renameButton.Name = "renameButton"; openButton.Name = "openButton";
             cancelButton.Name = "cancelButton"; vsNote.Name = "vsNote"; saveLogButton.Name = "saveLogButton"; copyLogButton.Name = "copyLogButton";
 
             Theme.Apply(this);
             Theme.StyleButton(renameButton, true);
+            Theme.StyleGoldButton(pluginReadme);
             foreach (var line in separators) line.BackColor = Theme.Border; // after Apply, which paints panels with the background
             foreach (var f in frames)
             {
@@ -1381,6 +1488,68 @@ namespace UnrealProjectRenamer
 
         void UpdateMainButtonText() { renameButton.Text = Verb(CurrentAction, Rebuilding); }
 
+        /// <summary>The grey note under Asset: the chosen asset's description (Import VFS assets only).</summary>
+        void ShowAssetNote()
+        {
+            int i = assetBox.SelectedIndex;
+            assetNote.Text = i >= 0 && i < AssetDescriptions.Length ? AssetDescriptions[i] : "";
+            assetNote.Visible = CurrentAction == Act.Import && assetNote.Text.Length > 0;
+        }
+
+        /// <summary>"Then" shows for Import Plugin only, and only while On Finish Success isn't "Do nothing".</summary>
+        void ShowThen()
+        {
+            bool show = CurrentAction == Act.ImportPlugin && WhenDone != DoNothing;
+            if (thenBox.Parent != null) thenBox.Parent.Visible = show; // its host panel
+            if (thenLabel != null) thenLabel.Visible = show;
+            ShowVsRow();
+        }
+
+        /// <summary>Whether this run builds: every action but the imports, and Import Plugin with Build Solution.</summary>
+        bool ActionBuilds
+        {
+            get { return !IsImport(CurrentAction) || (CurrentAction == Act.ImportPlugin && WhenDone == BuildSolution); }
+        }
+
+        /// <summary>The Visual Studio row (and the line under it) shows only for actions that build.</summary>
+        void ShowVsRow()
+        {
+            bool show = ActionBuilds;
+            if (vsBox.Parent != null) vsBox.Parent.Visible = show; // its host panel
+            if (vsLabel != null) vsLabel.Visible = show;
+            if (vsSeparator != null) vsSeparator.Visible = show;
+        }
+
+        /// <summary>The script's --plugin name for the chosen plugin, or null if it can't be imported yet.</summary>
+        string SelectedPluginKey
+        {
+            get { int i = pluginBox.SelectedIndex; return i >= 0 && i < PluginKeys.Length ? PluginKeys[i] : null; }
+        }
+
+        /// <summary>The grey note under Plugin: the chosen plugin's description (Import Plugin only).</summary>
+        void ShowPluginNote()
+        {
+            int i = pluginBox.SelectedIndex;
+            pluginNote.Text = i >= 0 && i < PluginDescriptions.Length ? PluginDescriptions[i] : "";
+            pluginNote.Visible = CurrentAction == Act.ImportPlugin && pluginNote.Text.Length > 0;
+            pluginReadme.Visible = CurrentAction == Act.ImportPlugin;
+            pluginReadme.Enabled = PluginReadmeUrl != null; // greyed out for a plugin with no README yet
+        }
+
+        string PluginReadmeUrl
+        {
+            get { int i = pluginBox.SelectedIndex; return i >= 0 && i < PluginReadmes.Length ? PluginReadmes[i] : null; }
+        }
+
+        /// <summary>The Readme button: opens the chosen plugin's README on GitHub in the browser.</summary>
+        void OpenPluginReadme()
+        {
+            var url = PluginReadmeUrl;
+            if (url == null) return;
+            try { Process.Start(new ProcessStartInfo(url) { UseShellExecute = true }); }
+            catch (Exception ex) { Notify(this, "Couldn't open the README", url + "\n\n" + ex.Message); }
+        }
+
         /// <summary>Show the fields and On Finish Success choices that belong to the chosen Action.</summary>
         void ActionChanged()
         {
@@ -1396,6 +1565,16 @@ namespace UnrealProjectRenamer
             // A rename or a regenerate deletes Binaries/Intermediate, so it always builds from scratch.
             rebuildBox.Visible = rebuildNote.Visible = act == Act.Build || act == Act.Package;
             UpdateMainButtonText();
+            bool assets = act == Act.Import;
+            assetBox.Parent.Visible = assets; // its host panel
+            if (assetLabel != null) assetLabel.Visible = assets;
+            ShowAssetNote();
+            bool plugins = act == Act.ImportPlugin;
+            pluginBox.Parent.Parent.Visible = plugins; // host panel -> the row panel with View Readme
+            if (pluginLabel != null) pluginLabel.Visible = plugins;
+            ShowPluginNote();
+            // Visual Studio only for runs that build (not the imports, unless Import Plugin builds afterwards).
+            ShowVsRow();
             bool package = act == Act.Package;
             buildConfigBox.Parent.Visible = package; // its host panel
             buildConfigNote.Visible = package;
@@ -1411,10 +1590,14 @@ namespace UnrealProjectRenamer
             if (engineLabel != null) engineLabel.Visible = upgrade;
 
             // Each action starts on its own defaults (Project and Visual Studio carry over)...
-            FillWhenDone(package ? PackageWhenDoneDefault : Array.IndexOf(BasicWhenDone, OpenEditor));
+            FillWhenDone(package ? PackageWhenDoneDefault : plugins ? PluginWhenDoneDefault : Array.IndexOf(BasicWhenDone, OpenEditor));
+            thenBox.SelectedIndex = ThenDefault;
+            ShowThen();
             rebuildBox.Checked = false;
             cleanCookByConfig = new Dictionary<string, bool>(CleanCookDefaults);
             buildConfigBox.SelectedIndex = 0; // Development
+            assetBox.SelectedIndex = 0; // VFS Shaders
+            pluginBox.SelectedIndex = 0; // Gameplay Message Subsystem
             ShowCleanCook();
             if (DefaultBuildLocation() != null) { autoBuildLocation = DefaultBuildLocation(); buildLocationBox.Text = autoBuildLocation; }
             PickActionEngine();
@@ -1488,7 +1671,7 @@ namespace UnrealProjectRenamer
             // Show the starting action's own saved fields first: switching to the last-used action saves the
             // action being left, and it must save what was remembered, not the still-empty start-up fields.
             RestoreFields(CurrentAction);
-            if (last != null && Enum.TryParse(last, out lastAct) && lastAct != CurrentAction)
+            if (last != null && Enum.TryParse(last, out lastAct) && !IsHidden(lastAct) && lastAct != CurrentAction)
                 actionBox.SelectedIndex = (int)lastAct; // ActionChanged saves the start action, restores this one
         }
 
@@ -1503,8 +1686,11 @@ namespace UnrealProjectRenamer
                 { "Engine", engineBox.SelectedIndex > 0 ? (string)engineBox.SelectedItem : "" },
                 { "VisualStudio", vs != null ? vs.Path : "" },
                 { "OnFinishSuccess", WhenDone },
+                { "Then", thenBox.SelectedItem as string ?? "" },
                 { "Rebuild", rebuildBox.Checked ? "1" : "0" },
                 { "Build", buildConfigBox.SelectedItem as string ?? "" },
+                { "Asset", assetBox.SelectedItem as string ?? "" },
+                { "Plugin", pluginBox.SelectedItem as string ?? "" },
                 { "CleanCookDevelopment", CleanCookFor("Development") ? "1" : "0" },
                 { "CleanCookShipping", CleanCookFor("Shipping") ? "1" : "0" },
                 { "BuildLocation", buildLocationBox.Text },
@@ -1542,8 +1728,11 @@ namespace UnrealProjectRenamer
                 if (i >= 0) vsBox.SelectedIndex = i;
             }
             if (f.TryGetValue("OnFinishSuccess", out v) && whenDoneBox.Items.Contains(v)) whenDoneBox.SelectedItem = v;
+            if (f.TryGetValue("Then", out v) && thenBox.Items.Contains(v)) thenBox.SelectedItem = v;
             if (f.TryGetValue("Rebuild", out v)) rebuildBox.Checked = v == "1";
             if (f.TryGetValue("Build", out v) && buildConfigBox.Items.Contains(v)) buildConfigBox.SelectedItem = v;
+            if (f.TryGetValue("Asset", out v) && assetBox.Items.Contains(v)) assetBox.SelectedItem = v;
+            if (f.TryGetValue("Plugin", out v) && pluginBox.Items.Contains(v)) pluginBox.SelectedItem = v;
             // Clean cook per configuration. Settings from before 0.20.5 had one box for both: it becomes Development's.
             foreach (var config in BuildConfigs)
                 if (f.TryGetValue("CleanCook" + config, out v)) cleanCookByConfig[config] = v == "1";
@@ -1567,7 +1756,7 @@ namespace UnrealProjectRenamer
         /// <summary>Fill On Finish Success for the current Action and select the choice at <paramref name="select"/>.</summary>
         void FillWhenDone(int select)
         {
-            var items = CurrentAction == Act.Package ? PackageWhenDone : BasicWhenDone;
+            var items = CurrentAction == Act.Package ? PackageWhenDone : CurrentAction == Act.ImportPlugin ? PluginWhenDone : BasicWhenDone;
             whenDoneBox.BeginUpdate();
             whenDoneBox.Items.Clear();
             whenDoneBox.Items.AddRange(items);
@@ -1899,7 +2088,10 @@ namespace UnrealProjectRenamer
             projectNote.Text = noProject ? MissingProjectMessage() : "";
             projectNote.ForeColor = empty ? Theme.Muted : Theme.Error;
             projectNote.Visible = noProject;
-            if (noProject) problem = empty ? "" : "Can't start - see the message under Project.";
+            if (act == Act.Import) problem = ActionNames[(int)act] + " isn't available yet."; // placeholder action: never runs
+            else if (act == Act.ImportPlugin && SelectedPluginKey == null)
+                problem = pluginBox.SelectedItem + " can't be imported yet.";
+            else if (noProject) problem = empty ? "" : "Can't start - see the message under Project.";
             else if (rename && nameBox.Text.Length == 0) problem = "Type the new project name.";
             else if (rename && !ValidName.IsMatch(nameBox.Text)) problem = "The name must start with a letter and use only letters, digits and underscores.";
             else if (rename && nameBox.Text == old) problem = "The new name is the same as the current one.";
@@ -1912,9 +2104,10 @@ namespace UnrealProjectRenamer
                 problem = "Choose a Build location for the packaged game (Browse...).";
 
             // Engine / Visual Studio / Windows SDK problems block Rename (it builds), not Preview.
-            var blocker = BuildBlocker();
+            // (only for runs that build: Import Plugin with Do nothing needs no engine or Visual Studio).
+            var blocker = ActionBuilds ? BuildBlocker() : null;
             vsNote.Text = blocker ?? "";
-            vsNote.Visible = blocker != null;
+            vsNote.Visible = blocker != null; // only runs that build show the Visual Studio row
 
             bool busy = running != null && !running.HasExited;
             SetInputsLocked(busy);
@@ -1929,13 +2122,15 @@ namespace UnrealProjectRenamer
                     (blocker != null ? (rename ? "Can't rename yet - see the message above. Preview still works."
                                                : "Can't " + Verb(act, Rebuilding).ToLower() + " yet - see the message above.")
                      : rename ? "Ready to rename \"" + old + "\" to \"" + nameBox.Text + "\". Preview first to see every change."
+                     : act == Act.ImportPlugin ? "Ready to import " + pluginBox.SelectedItem + " into \"" + old + "\"."
                      : "Ready to " + Verb(act, Rebuilding).ToLower() + " \"" + old + "\".");
         }
 
         /// <summary>Grey out the inputs while a preview or rename runs, so nothing can change under it.</summary>
         void SetInputsLocked(bool locked)
         {
-            foreach (Control c in new Control[] { actionBox, rebuildBox, buildConfigBox, cookContentBox, buildLocationBox, buildLocationBrowse, projectBox, projectBrowse, nameBox, engineBox, vsBox, whenDoneBox })
+            // View Readme (pluginReadme) is left out on purpose: it stays clickable during a run (user's rule).
+            foreach (Control c in new Control[] { actionBox, assetBox, pluginBox, rebuildBox, buildConfigBox, cookContentBox, buildLocationBox, buildLocationBrowse, projectBox, projectBrowse, nameBox, engineBox, vsBox, whenDoneBox, thenBox })
                 c.Enabled = !locked;
             AllowDrop = !locked;
         }
@@ -2074,6 +2269,17 @@ namespace UnrealProjectRenamer
                       "The project folder keeps its name.\n\n" +
                       "Close the project in Unreal and Visual Studio, and make sure it is committed or backed up.\n\nContinue?";
                 if (!DarkDialog.Ask(this, "Rename project", msg, true, "Rename", "Cancel"))
+                    return;
+            }
+            if (CurrentAction == Act.ImportPlugin)
+            {
+                int i = pluginBox.SelectedIndex;
+                var warning = i >= 0 && i < PluginWarnings.Length ? PluginWarnings[i] : null;
+                string msg = "This downloads " + pluginBox.SelectedItem + " into \"" + OldName + "\"'s Plugins folder " +
+                      "(an older copy of it is replaced).\n\n" +
+                      (warning != null ? warning + "\n\n" : "") +
+                      "Make sure the project is committed or backed up.\n\nContinue?";
+                if (!AskUser(this, "Import plugin", msg, "Import", "Cancel"))
                     return;
             }
             if (CurrentAction == Act.Upgrade)
@@ -2239,7 +2445,9 @@ namespace UnrealProjectRenamer
             else
             {
                 args.Add("--action");
-                args.Add(act == Act.Build ? "build" : act == Act.Regenerate ? "regenerate" : act == Act.Upgrade ? "upgrade" : "package");
+                args.Add(act == Act.Build ? "build" : act == Act.Regenerate ? "regenerate" : act == Act.Upgrade ? "upgrade"
+                         : act == Act.ImportPlugin ? "import-plugin" : "package");
+                if (act == Act.ImportPlugin) { args.Add("--plugin"); args.Add(SelectedPluginKey); }
                 if (Rebuilding) args.Add("--rebuild");
                 args.Add("--yes");
             }
@@ -2263,9 +2471,18 @@ namespace UnrealProjectRenamer
                     // Every rename finishes the job: project files, build, resave, redirect cleanup, plugin check.
                     args.AddRange(new[] { "--generate-project-files", "--build", "--resave-assets",
                                           "--remove-unused-redirects", "--verify-plugins" });
+                else if (act == Act.ImportPlugin)
+                {
+                    // On Finish Success: Build Solution = project files + build; Then: open the editor.
+                    if (WhenDone == BuildSolution)
+                    {
+                        args.AddRange(new[] { "--generate-project-files", "--build" });
+                        if (thenBox.SelectedItem as string == OpenEditor) args.Add("--open-editor");
+                    }
+                }
                 else
                     args.AddRange(new[] { "--generate-project-files", "--build" });
-                args.AddRange(WhenDoneArgs(WhenDone));
+                if (act != Act.ImportPlugin) args.AddRange(WhenDoneArgs(WhenDone));
                 if (PackageConfig() != null && packageDir != null)
                 {
                     args.Add("--package-dir"); args.Add(packageDir);
@@ -2294,6 +2511,7 @@ namespace UnrealProjectRenamer
             runAction = act;
             runRebuild = Rebuilding;
             upgradedTo = act == Act.Upgrade ? engineBox.SelectedItem as string : null;
+            importedPlugin = act == Act.ImportPlugin ? pluginBox.SelectedItem as string : null;
             cancelled = false;
             // A real rename can't be stopped until its files are renamed; builds and packaging can be stopped anytime.
             cancellable = dryRun || !rename;
@@ -2303,6 +2521,8 @@ namespace UnrealProjectRenamer
                                                    : "Building and packaging... this can take a long time.")
                 : act == Act.Upgrade ? "Switching to " + engineBox.SelectedItem + ", regenerating project files, then building... this can take several minutes."
                 : act == Act.Regenerate ? "Deleting generated files, regenerating project files, then building... this can take several minutes."
+                : act == Act.ImportPlugin ? "Downloading and importing " + pluginBox.SelectedItem +
+                                            (WhenDone == BuildSolution ? ", then building... this can take several minutes." : "...")
                 : runRebuild ? "Rebuilding (clean, then build)... this can take several minutes."
                 : "Building... this can take several minutes.";
             running = new Process { StartInfo = psi, EnableRaisingEvents = true };
@@ -2357,8 +2577,11 @@ namespace UnrealProjectRenamer
             {
                 bool was = cancellable;
                 // Cooking and packaging only write cooked data and the build folder, so they can be stopped.
-                if (m.Success || line.StartsWith("Verifying plugins") || line.StartsWith("Cooking")) cancellable = true;
+                // An imported plugin is moved/copied into Plugins/ between "Installing into" and "Imported:".
+                if (m.Success || line.StartsWith("Verifying plugins") || line.StartsWith("Cooking")
+                    || Regex.IsMatch(line, @"^\s+Imported: ")) cancellable = true;
                 else if (Regex.IsMatch(line, @"^\s+resaving \d+ asset") || line.StartsWith("Removing redirects")
+                         || line.StartsWith("Installing into ")
                          || line.StartsWith("Opening Unreal Editor") || line.StartsWith("Launching ")) cancellable = false;
                 if (was != cancellable) UpdateState();
             }
@@ -2471,7 +2694,10 @@ namespace UnrealProjectRenamer
             else if (code == 0)
             {
                 bool launched = log.Text.Contains("\nLaunching ");
-                var built = runAction == Act.Upgrade ? "Upgraded to " + upgradedTo + ", regenerated project files and built"
+                var built = runAction == Act.ImportPlugin
+                              ? "Imported " + importedPlugin + (log.Text.Contains("\nBuilding...") ? ", regenerated project files and built"
+                                                                : ". Build the project before opening it in the editor")
+                          : runAction == Act.Upgrade ? "Upgraded to " + upgradedTo + ", regenerated project files and built"
                           : runAction == Act.Regenerate ? "Regenerated project files and built" : runRebuild ? "Rebuilt" : "Built";
                 status.Text = packagedFolder != null ? built + " and packaged" + (launched ? ", and the game was started" : "") +
                                                        ". All steps finished. Open folder shows the build."

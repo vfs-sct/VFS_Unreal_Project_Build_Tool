@@ -4,6 +4,14 @@
 
 ---
 
+### 0.22.0
+
+- New "Import Plugin" action, with a Plugin dropdown (Gameplay Message Subsystem, Shader Warmup) and a description of each. Its On Finish Success is Do nothing / Build Solution (default), and a "Then" field under it (hidden while On Finish Success is Do nothing) offers Do nothing / Open in Unreal Editor when done (default).
+- Import Plugin works for **Shader Warmup**: it downloads the plugin from GitHub into the project's `Plugins` folder, then regenerates the project files and builds. An older copy of the plugin is replaced. The project must be a C++ project. Shader Warmup is set up for you: the project's Game Default Map becomes the warm-up screen, and the old Game Default Map becomes the level it opens next (warned about under the Plugin dropdown and in the Import confirmation).
+- Import Plugin works for **Gameplay Message Subsystem** too (Epic's Gameplay Message Router from Lyra): it goes into `Plugins/GameplayMessageRouter`, and View Readme opens its guide.
+- Import Plugin: a **View Readme** button next to the Plugin dropdown opens the chosen plugin's README on GitHub.
+- Every word in the Action names now starts with a capital letter (e.g. "Regenerate Visual Studio Project Files").
+
 ### 0.21.3
 
 - Rename Project: a grey note under New name lists what a name can't contain (spaces, symbols, Windows reserved names such as CON or NUL, C++ keywords such as class or int, or only changing the capitalisation).

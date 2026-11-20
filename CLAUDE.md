@@ -163,8 +163,44 @@ The user asked for these specifically — keep them:
 - **Always runs every follow-up step**: generate project files, build, resave assets,
   remove unused redirects (on), verify plugins. No checkboxes for these.
 - **Action** dropdown at the top (`actionBox`, `enum Act`, added 6 Nov): Build Solution,
-  **Regenerate Visual Studio project files (default since 6 Nov; app reopens on the last action)**, Package Build, Upgrade Project Version, Rename
-  Project. Settings store the enum names, so the order can change.
+  **Regenerate Visual Studio Project Files (default since 6 Nov; app reopens on the last action)**, Package Build, Upgrade Project Version, Rename
+  Project, **Import Plugin** and **Import VFS Assets** (names in Title Case, Plugin above VFS Assets since 16 Nov).
+  Import VFS Assets is a placeholder that does nothing yet (13 Nov); **hidden from the dropdown since 20 Nov** (`IsHidden`: left out of `actionBox.Items`, a saved LastAction of it is ignored; hidden actions must stay last in `Act` so the dropdown index = `(int)Act`) — `UpdateState` always
+  greys its button out with "<action name> isn't available yet."; `Run` has no script action for it,
+  so wire one up there before enabling it. **Import Plugin** (`Act.ImportPlugin`, 16 Nov) works for Shader Warmup and (20 Nov)
+  Gameplay Message Subsystem (key **`GameplayMessageRouter`**, Epic's .uplugin name; the user's rule: never rename
+  it; repos `vfs-sct/Unreal_Plugin_GameplayMessageSubsystem` and `vfs-sct/Unreal_Plugin_ShaderWarmup`, renamed from
+  `Unreal_ShaderWarmup` on 20 Nov). `PluginKeys` maps each `PluginNames` entry to the script's `--plugin` name
+  (null = "can't be imported yet"). The tool only imports into C++ projects (user's rule, 20 Nov), even though
+  Gameplay Message Subsystem itself also builds in a Blueprint-only project (tested: UBT `UnrealEditor Win64
+  Development -Project=...` builds it; its README says so). Run: `--action import-plugin --plugin ShaderWarmup`, plus
+  `--generate-project-files --build` when On Finish Success is Build Solution, plus `--open-editor` when Then is
+  Open in Editor (`WhenDoneArgs` isn't used for it). Script: `PLUGIN_SOURCES` (title, codeload zip URL of `main`,
+  repo, editor checks); `import_plugin` refuses a project with no `Source/*.Target.cs` (exit 1), downloads to a
+  temp folder (`download_plugin`, urllib, 60 s, zip paths checked), creates `Plugins/` if missing, moves any
+  existing `<key>.uplugin` folder under Plugins out with `os.rename` to `Intermediate/ReplacedPlugins/<name>_<n>` (a locked one
+  = exit 1, the others moved back, nothing changed) and deletes it there (user's rule, 16 Nov: no backups), copies the plugin to
+  `Plugins/<key>`, warns if the .uproject lists it disabled, adds its `checks` (if any) to the yellow list, runs
+  its `setup` (if any), prints "  Imported:", then
+  `after_rename` does the rest. Cancel is off between "Installing into" and "  Imported:". The VS row shows only
+  when the run builds (`ActionBuilds` / `ShowVsRow`; BuildBlocker likewise). **View Readme** button next to Plugin (`pluginReadme`, `PluginReadmes` URLs in PluginNames order, null = greyed out;
+  opened with the shell in `OpenPluginReadme`; shown/enabled in `ShowPluginNote`; gold, `Theme.StyleGoldButton`;
+  **always clickable, also during a run** (user's rule): never add it to `SetInputsLocked`). To add a plugin: an entry in
+  `PLUGIN_SOURCES`, its key in `PluginKeys` and its README in `PluginReadmes`. Tested 16 Nov on scratch projects (no Plugins folder, existing
+  copy, Blueprint-only refused, full import + build). Shader Warmup's `setup_shader_warmup` (user's request, 16 Nov):
+  if DefaultGame.ini `[/Script/ShaderWarmup.ShaderWarmupSettings] NextLevel` is empty, sets it to the project's own
+  GameDefaultMap from before the switch (a /Game map that exists), then sets DefaultEngine.ini GameDefaultMap to
+  `/ShaderWarmup/L_ShaderWarmup.L_ShaderWarmup`;
+  with no Next Level it changes nothing and adds the manual steps to the yellow list. Never touches EditorStartupMap.
+  `ini_get` / `ini_set` keep encoding and line endings. The app warns about it in the grey note (`ShaderWarmupWarning`)
+  and in the Import confirmation (`PluginWarnings`, `StartAction`). Tested on scratch projects (map / no map / re-import);
+  not checked in a running editor. Import Plugin has a **Plugin** dropdown (`pluginBox`, `PluginNames`:
+  "Gameplay Message Subsystem", "Shader Warmup" (was "C++ Shader Precompiler"); notes from `PluginDescriptions` via
+  `ShowPluginNote`; "Plugin" in settings; moved out of Asset on 16 Nov), built the same way as Asset. Its On Finish Success is `PluginWhenDone` (Do nothing / Build Solution, default), and only Import Plugin shows a **Then** dropdown under it, and only while On Finish Success isn't Do nothing (`ShowThen`, on `whenDoneBox` changes; `thenBox`, `ThenChoices`: Do nothing / Open in Unreal Editor when done, default; "Then" in settings; locked during a run). Import VFS
+  Assets' **Asset** dropdown (`assetBox`, `AssetNames`: "VFS Shaders"; grey description under it from `AssetDescriptions`
+  via `ShowAssetNote`, hidden while an asset has none yet) shows under the Action note for Import only, is remembered per action ("Asset" in settings)
+  and is locked during a run. Import VFS Assets (and Import Plugin with Do nothing) hides the Visual Studio row,
+  its note and the line under it (`vsLabel`, `vsSeparator`); every other action still shows them. Settings store the enum names, so the order can change.
   Under the dropdown, `actionNote` (grey, `Theme.Muted`) shows `ActionDescriptions[(int)act]`, set in
   `ActionChanged` (added 13 Nov; `Theme.Apply` leaves Muted labels grey).
   **Upgrade Project Version** (`--action upgrade --engine-association X`, added 6 Nov): the **Engine
