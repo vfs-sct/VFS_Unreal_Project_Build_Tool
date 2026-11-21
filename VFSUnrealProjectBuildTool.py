@@ -1474,6 +1474,27 @@ def verify_plugins(engine_dir: Path, uproject: Path) -> bool:
     return all_ok
 
 
+def packaged_game_exe(uproject: Path, out_dir: Path) -> Path:
+    """The packaged game's .exe in <out_dir>/Windows. Unreal names it after the game target (Source/<Name>.Target.cs
+    with TargetType.Game), which can differ from the .uproject's name (e.g. a project made from a template)."""
+    win = out_dir / "Windows"
+    names = []
+    for target in sorted((uproject.parent / "Source").glob("*.Target.cs")):
+        try:
+            text = read_text(target)[0]
+        except Exception:
+            continue
+        if re.search(r"TargetType\.Game\b", text):
+            m = re.search(r"class\s+(\w+?)Target\s*:", text)
+            names.append(m.group(1) if m else target.name[:-len(".Target.cs")])
+    names.append(uproject.stem)
+    for name in names:
+        if (win / f"{name}.exe").exists():
+            return win / f"{name}.exe"
+    exes = sorted(win.glob("*.exe"), key=lambda e: e.stat().st_mtime, reverse=True) if win.is_dir() else []
+    return exes[0] if exes else win / f"{names[0]}.exe"
+
+
 def cook_and_package(engine_dir: Path, uproject: Path, config: str | None, clean: bool,
                      archive_dir: Path | None, rebuild: bool = False) -> bool:
     """Cook the project's content for Windows (config None) or cook and package a Development/Shipping build
@@ -2185,7 +2206,7 @@ def after_rename(args, new_uproject: Path) -> int:
         elif args.package:
             print(f"  Packaged: {out_dir}")
             if args.launch:
-                game = out_dir / "Windows" / f"{new_uproject.stem}.exe"
+                game = packaged_game_exe(new_uproject, out_dir)
                 if game.exists():
                     print(f"\nLaunching {game}")
                     flags = getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
@@ -2239,14 +2260,14 @@ def after_rename(args, new_uproject: Path) -> int:
                              "are converted to the new engine when you save them."))
         if packaged_ok and args.package and action == "package":
             # A Package Build only needs the packaged game checked.
-            game = out_dir / "Windows" / f"{new_uproject.stem}.exe"
+            game = packaged_game_exe(new_uproject, out_dir)
             print_editor_checks([(str(game), "The packaged game: " +
-                                  ("it was started for you. " if args.launch else "start it. ") +
+                                  ("it was started for you. " if args.launch and game.exists() else "start it. ") +
                                   "Check it opens, loads the first level and plays.")], BUILD_CHECK_HEADER)
             return 2 if failed else 0
         if packaged_ok and args.package:
-            game = out_dir / "Windows" / f"{new_uproject.stem}.exe"
-            items.append((str(game), "The packaged game: " + ("it was started for you. " if args.launch else "start it. ") +
+            game = packaged_game_exe(new_uproject, out_dir)
+            items.append((str(game), "The packaged game: " + ("it was started for you. " if args.launch and game.exists() else "start it. ") +
                           "Check it opens, loads the first level and plays."))
         for m in default_maps(root):
             items.append((m, "Your start-up map: open it and press Play to check the game still runs."))

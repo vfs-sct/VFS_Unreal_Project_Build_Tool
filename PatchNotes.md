@@ -4,6 +4,10 @@
 
 ---
 
+### 0.22.1
+
+- Package Build: **Launch .exe** now starts the packaged game when its .exe isn't named after the project (Unreal names it after the game target, e.g. a project made from UnrealProjectBase packages `UnrealProjectBase.exe`). The packaged game in the yellow list points at the right .exe too.
+
 ### 0.22.0
 
 - New "Import Plugin" action, with a Plugin dropdown (Gameplay Message Subsystem, Shader Warmup) and a description of each. Its On Finish Success is Do nothing / Build Solution (default), and a "Then" field under it (hidden while On Finish Success is Do nothing) offers Do nothing / Open in Unreal Editor when done (default).
