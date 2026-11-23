@@ -186,7 +186,19 @@ The user asked for these specifically — keep them:
   when the run builds (`ActionBuilds` / `ShowVsRow`; BuildBlocker likewise). **View Readme** button next to Plugin (`pluginReadme`, `PluginReadmes` URLs in PluginNames order, null = greyed out;
   opened with the shell in `OpenPluginReadme`; shown/enabled in `ShowPluginNote`; gold, `Theme.StyleGoldButton`;
   **always clickable, also during a run** (user's rule): never add it to `SetInputsLocked`). To add a plugin: an entry in
-  `PLUGIN_SOURCES`, its key in `PluginKeys` and its README in `PluginReadmes`. Tested 16 Nov on scratch projects (no Plugins folder, existing
+  `PLUGIN_SOURCES`, its key in `PluginKeys` and its README in `PluginReadmes`.
+  **FMOD** (23 Nov, key `FMODStudio`, repo `vfs-sct/Unreal_Plugin_FMOD`, a full UE 5.8 project): `plugins` installs
+  FMODStudio + FMODStudioNiagara + FMODStudioOpenXR (each replaced as above); `project_files` copies the repo's `FMOD/`
+  (Studio project) and `Content/FMOD` (banks + assets) **only if the project has no FMOD of its own**
+  (`has_own_fmod_project`: `FMOD/*.fspro` or any file in `Content/FMOD`; user's rule: never overwrite the team's
+  sounds); `setup_fmod` adds the 7 FMOD cook/stage lines to DefaultGame.ini (`ini_add`, no duplicates). The repo uses
+  **Git LFS** (`Content/**`, audio, images, plugin binaries) and codeload zips hold only pointer files, so `fetch_lfs`
+  swaps them through the repo's LFS batch API (`lfs` URL; public repo, no sign-in; sha256 checked) before
+  "Installing into". Tested in-process with a local fake LFS server (fresh project, re-import, own FMOD kept, old copy
+  in a subfolder replaced, LFS error = nothing changed), then end to end from GitHub (23 Nov): a minimal scratch C++
+  5.8 project, `--action import-plugin --plugin FMODStudio --generate-project-files --build` fetched all 414 LFS
+  files (no pointers left, 5.7 MB Master.bank), copied FMOD/ + Content/FMOD, built (FMODStudio editor DLLs), exit 0.
+  Not checked in a running editor. Tested 16 Nov on scratch projects (no Plugins folder, existing
   copy, Blueprint-only refused, full import + build). Shader Warmup's `setup_shader_warmup` (user's request, 16 Nov):
   if DefaultGame.ini `[/Script/ShaderWarmup.ShaderWarmupSettings] NextLevel` is empty, sets it to the project's own
   GameDefaultMap from before the switch (a /Game map that exists), then sets DefaultEngine.ini GameDefaultMap to

@@ -1680,10 +1680,140 @@ def setup_shader_warmup(root: Path) -> None:
                    "Content Browser to see it). Don't make it the Editor Startup Map.")
 
 
-# Plugins --action import-plugin can download, by the name of their .uplugin. Each repo's zip must contain
-# <name>.uplugin (at its root or in a folder); that folder becomes <project>/Plugins/<name>.
-# "setup" (optional) runs after the copy, with the project folder.
+def ini_add(path: Path, section: str, line: str) -> bool:
+    """Add `line` (e.g. "+Key=(Path=...)") to `[section]` unless that exact line is already there.
+    Keeps the file's encoding and line endings; creates the file/section if needed. Returns True if added."""
+    if path.exists():
+        text, enc = read_text(path)
+    else:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        text, enc = "", "utf-8"
+    nl = "\r\n" if "\r\n" in text else "\n"
+    lines = text.split(nl)
+    current, last = None, None  # last = index of the section's last non-blank line
+    for i, l in enumerate(lines):
+        s = l.strip()
+        if s.startswith("[") and s.endswith("]"):
+            current = s[1:-1]
+            if current == section:
+                last = i
+        elif current == section:
+            if s == line:
+                return False
+            if s:
+                last = i
+    if last is not None:
+        lines.insert(last + 1, line)
+    else:
+        while lines and lines[-1].strip() == "":
+            lines.pop()
+        lines += ([""] if lines else []) + [f"[{section}]", line, ""]
+    new_text = nl.join(lines)
+    if not new_text.endswith(nl):
+        new_text += nl
+    write_text(path, new_text, enc)
+    return True
+
+
+PACKAGING_SECTION = "/Script/UnrealEd.ProjectPackagingSettings"
+# What FMOD's integration needs in DefaultGame.ini so its banks and assets end up in a packaged game.
+FMOD_PACKAGING_LINES = [f'+DirectoriesToAlwaysCook=(Path="/Game/FMOD/{d}")'
+                        for d in ("Banks", "Buses", "Events", "Reverbs", "Snapshots", "VCAs")]
+FMOD_PACKAGING_LINES.append('+DirectoriesToAlwaysStageAsNonUFS=(Path="FMOD/Desktop")')
+
+
+def setup_fmod(root: Path) -> None:
+    """Make sure a packaged game includes FMOD's banks (Config/DefaultGame.ini)."""
+    game_ini = root / "Config" / "DefaultGame.ini"
+    added = [l for l in FMOD_PACKAGING_LINES if ini_add(game_ini, PACKAGING_SECTION, l)]
+    if added:
+        print(f"  packaging settings: added {len(added)} FMOD line(s) to Config/DefaultGame.ini "
+              "(so packaged games include the banks)")
+    else:
+        print("  packaging settings: FMOD's banks are already cooked and staged (Config/DefaultGame.ini)")
+
+
+def has_own_fmod_project(root: Path) -> bool:
+    """True if the project already has an FMOD Studio project (FMOD/*.fspro) or anything in Content/FMOD."""
+    fmod, content = root / "FMOD", root / "Content" / "FMOD"
+    return (fmod.is_dir() and any(fmod.glob("*.fspro"))) or \
+        (content.is_dir() and any(p.is_file() for p in content.rglob("*")))
+
+
+LFS_POINTER = b"version https://git-lfs.github.com/spec/v1"
+
+
+def fetch_lfs(folders: list[Path], batch_url: str) -> int:
+    """GitHub's zip downloads hold Git LFS files as small pointer files. Replace every pointer under `folders`
+    with the real file from the repo's LFS server (public repo, no sign-in). Returns how many were fetched."""
+    import hashlib
+    import urllib.request
+    pointers: dict[str, tuple[int, list[Path]]] = {}
+    for folder in folders:
+        for p in folder.rglob("*"):
+            if not p.is_file() or p.stat().st_size > 1024:
+                continue
+            data = p.read_bytes()
+            if not data.startswith(LFS_POINTER):
+                continue
+            fields = dict(l.split(" ", 1) for l in data.decode("ascii", "replace").splitlines() if " " in l)
+            oid = fields.get("oid", "").removeprefix("sha256:")
+            pointers.setdefault(oid, (int(fields.get("size", 0)), []))[1].append(p)
+    if not pointers:
+        return 0
+    print(f"  downloading {len(pointers)} large file(s) (Git LFS)...")
+    headers = {"Accept": "application/vnd.git-lfs+json", "Content-Type": "application/vnd.git-lfs+json",
+               "User-Agent": "VFSUnrealProjectBuildTool"}
+    oids = list(pointers)
+    for start in range(0, len(oids), 100):
+        chunk = oids[start:start + 100]
+        body = json.dumps({"operation": "download", "transfers": ["basic"],
+                           "objects": [{"oid": o, "size": pointers[o][0]} for o in chunk]}).encode()
+        req = urllib.request.Request(batch_url, data=body, headers=headers, method="POST")
+        with urllib.request.urlopen(req, timeout=60) as r:
+            answer = json.load(r)
+        for obj in answer.get("objects", []):
+            oid = obj.get("oid", "")
+            if obj.get("error") or oid not in pointers:
+                raise RuntimeError(f"Git LFS has no file {oid[:12]} ({obj.get('error', {}).get('message', '?')})")
+            action = obj["actions"]["download"]
+            dl = urllib.request.Request(action["href"], headers=dict(action.get("header", {}),
+                                                                     **{"User-Agent": headers["User-Agent"]}))
+            first = pointers[oid][1][0]
+            tmp = first.with_name(first.name + ".lfs")
+            digest = hashlib.sha256()
+            with urllib.request.urlopen(dl, timeout=60) as r, open(tmp, "wb") as f:
+                while block := r.read(1 << 20):
+                    digest.update(block)
+                    f.write(block)
+            if digest.hexdigest() != oid:
+                raise RuntimeError(f"{first.name} didn't download correctly (checksum mismatch)")
+            for p in pointers[oid][1]:
+                shutil.copyfile(tmp, p)
+            tmp.unlink()
+    return len(pointers)
+
+
+# Plugins --action import-plugin can download, keyed by the name of their (main) .uplugin. Each repo's zip must
+# contain <name>.uplugin (at its root or in a folder); that folder becomes <project>/Plugins/<name>.
+# Optional: "plugins" (every .uplugin to install, default [key]); "project_files" (folders copied from the repo's
+# root into the project's, only if the project has no FMOD Studio project of its own: see has_own_fmod_project);
+# "lfs" (the repo's Git LFS batch URL, to swap LFS pointer files for the real ones); "setup" (runs after the copy,
+# with the project folder); "checks" (added to the yellow list).
 PLUGIN_SOURCES = {
+    # The FMOD for Unreal integration (2.03.14, made for UE 5.8) plus a demo FMOD Studio project and its banks.
+    "FMODStudio": {
+        "title": "FMOD",
+        "zip": "https://codeload.github.com/vfs-sct/Unreal_Plugin_FMOD/zip/refs/heads/main",
+        "repo": "https://github.com/vfs-sct/Unreal_Plugin_FMOD",
+        "lfs": "https://github.com/vfs-sct/Unreal_Plugin_FMOD.git/info/lfs/objects/batch",
+        "plugins": ["FMODStudio", "FMODStudioNiagara", "FMODStudioOpenXR"],
+        "project_files": ["FMOD", "Content/FMOD"],
+        "setup": setup_fmod,
+        "checks": [("Edit > Plugins > FMOD Studio",
+                    "Check FMOD Studio and FMOD Studio Niagara are enabled. Then open Content/FMOD/Events in the "
+                    "Content Browser, drag an event into a level and press Play to hear it.")],
+    },
     # Shown as "Gameplay Message Subsystem"; its .uplugin is GameplayMessageRouter (Epic's name, kept on purpose).
     "GameplayMessageRouter": {
         "title": "Gameplay Message Subsystem",
@@ -1745,12 +1875,40 @@ def import_plugin(uproject: Path, key: str, staging: Path) -> int:
         print(f"\nerror: couldn't download {src['title']}: {e}")
         print("\nNothing was changed.")
         return 1
-    found = sorted(extracted.rglob(f"{key}.uplugin"), key=lambda p: len(p.parts))
-    if not found:
-        print(f"\nerror: the download has no {key}.uplugin")
-        print("\nNothing was changed.")
-        return 1
-    plugin_src = found[0].parent
+    names = src.get("plugins", [key])
+    sources: dict[str, Path] = {}
+    for name in names:
+        found = sorted(extracted.rglob(f"{name}.uplugin"), key=lambda p: len(p.parts))
+        if not found:
+            print(f"\nerror: the download has no {name}.uplugin")
+            print("\nNothing was changed.")
+            return 1
+        sources[name] = found[0].parent
+
+    # Folders copied into the project itself (e.g. FMOD's demo Studio project), from the repo's root: the folder
+    # with its .uproject, or else the zip's top folder.
+    extras: list[tuple[Path, str]] = []
+    if src.get("project_files"):
+        uprojects = sorted(extracted.rglob("*.uproject"), key=lambda p: len(p.parts))
+        repo_root = uprojects[0].parent if uprojects else next((d for d in extracted.iterdir() if d.is_dir()), extracted)
+        if has_own_fmod_project(root):
+            print(f"  the project has its own FMOD Studio project / Content/FMOD: keeping them "
+                  f"(not copying {', '.join(src['project_files'])})")
+        else:
+            for rel in src["project_files"]:
+                if (repo_root / rel).is_dir():
+                    extras.append((repo_root / rel, rel))
+                else:
+                    print(f"  warning: the download has no {rel} folder")
+    if src.get("lfs"):
+        try:
+            fetched = fetch_lfs(list(sources.values()) + [p for p, _ in extras], src["lfs"])
+        except Exception as e:
+            print(f"\nerror: couldn't download {src['title']}'s large files (Git LFS): {e}")
+            print("\nNothing was changed.")
+            return 1
+        if fetched:
+            print(f"  downloaded {fetched} large file(s)")
 
     plugins_dir = root / "Plugins"
     print(f"\nInstalling into Plugins/{key}...")  # the app can't be stopped from here until "Imported:"
@@ -1760,9 +1918,13 @@ def import_plugin(uproject: Path, key: str, staging: Path) -> int:
     dest = plugins_dir / key
     # An older copy (anywhere under Plugins/) is replaced, so two plugins with the same name never clash. Each is
     # first renamed out of Plugins/ (all or nothing: a locked file stops here with nothing changed), then deleted.
-    existing = sorted({p.parent for p in plugins_dir.rglob(f"{key}.uplugin")}, key=lambda p: len(p.parts))
-    if dest.exists() and dest not in existing:
-        existing.append(dest)
+    existing: list[Path] = []
+    for name in names:
+        for p in sorted({p.parent for p in plugins_dir.rglob(f"{name}.uplugin")}, key=lambda p: len(p.parts)):
+            if p not in existing:
+                existing.append(p)
+        if (plugins_dir / name).exists() and plugins_dir / name not in existing:
+            existing.append(plugins_dir / name)
     if existing:
         trash_dir = root / "Intermediate" / "ReplacedPlugins"
         trash_dir.mkdir(parents=True, exist_ok=True)
@@ -1789,15 +1951,19 @@ def import_plugin(uproject: Path, key: str, staging: Path) -> int:
             print(f"  replacing the existing {old.relative_to(root)}")
         for problem in delete_paths([t for t, _ in moved]):
             print(f"  warning: couldn't delete the old copy in Intermediate/ReplacedPlugins ({problem})")
-    shutil.copytree(plugin_src, dest)
-    print(f"  copied to {dest.relative_to(root)}")
+    for name, plugin_src in sources.items():
+        shutil.copytree(plugin_src, plugins_dir / name)
+        print(f"  copied to {(plugins_dir / name).relative_to(root)}")
+    for folder, rel in extras:
+        shutil.copytree(folder, root / rel, dirs_exist_ok=True)  # only empty or missing ones get here
+        print(f"  copied to {rel}")
 
     # A project that lists the plugin as disabled would ignore it.
     try:
         data = json.loads(read_text(uproject)[0])
         for p in data.get("Plugins", []):
-            if p.get("Name", "").lower() == key.lower() and p.get("Enabled") is False:
-                print(f"  warning: {uproject.name} lists {key} as disabled; enable it in Edit > Plugins")
+            if p.get("Name", "").lower() in (n.lower() for n in names) and p.get("Enabled") is False:
+                print(f"  warning: {uproject.name} lists {p['Name']} as disabled; enable it in Edit > Plugins")
     except Exception:
         pass
     for what, why in src.get("checks", []):

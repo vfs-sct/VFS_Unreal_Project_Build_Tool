@@ -4,6 +4,10 @@
 
 ---
 
+### 0.23.0
+
+- Import Plugin works for **FMOD**: it installs the FMOD Studio plugins (FMODStudio, FMODStudioNiagara, FMODStudioOpenXR, 2.03.14 for UE 5.8) with a demo FMOD Studio project, banks and events to play with, and adds the packaging settings for FMOD's banks. A project that already has its own FMOD Studio project keeps its sounds: only the plugins are replaced. View Readme opens its guide.
+
 ### 0.22.1
 
 - Package Build: **Launch .exe** now starts the packaged game when its .exe isn't named after the project (Unreal names it after the game target, e.g. a project made from UnrealProjectBase packages `UnrealProjectBase.exe`). The packaged game in the yellow list points at the right .exe too.
