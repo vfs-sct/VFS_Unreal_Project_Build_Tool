@@ -29,7 +29,7 @@ namespace UnrealProjectRenamer
     static class Program
     {
         // App version: bump this for every build you hand out (major.minor.patch).
-        public const string Version = "0.23.0";
+        public const string Version = "0.23.1";
 
         [DllImport("user32.dll")]
         static extern bool SetProcessDPIAware();
@@ -1151,8 +1151,8 @@ namespace UnrealProjectRenamer
         {
             "The FMOD for Unreal plugins (FMOD Studio 2.03.14, for UE 5.8) with a demo FMOD Studio project, banks and events to play with. " +
                 "If your project already has its own FMOD Studio project, only the plugins are replaced and your sounds are kept.",
-            "A decoupled, publish-subscribe communication system plugin from the Lyra project taught in Steven's classes.",
-            "A C++ plugin that allows your project to precompile all shaders on boot up. " +
+            "A decoupled, publish-subscribe communication system plugin (for UE 5.8) from the Lyra project taught in Steven's classes.",
+            "A C++ plugin (for UE 5.8) that allows your project to precompile all shaders on boot up. " +
                 "Includes UI for you to set display while shaders are compiling.\n" + ShaderWarmupWarning,
         };
         // What importing Shader Warmup changes in the project (shown under Plugin and in the Import confirmation).

@@ -4,6 +4,10 @@
 
 ---
 
+### 0.23.1
+
+- Import Plugin: the Gameplay Message Subsystem and Shader Warmup descriptions now say they're for UE 5.8, like FMOD's.
+
 ### 0.23.0
 
 - Import Plugin works for **FMOD**: it installs the FMOD Studio plugins (FMODStudio, FMODStudioNiagara, FMODStudioOpenXR, 2.03.14 for UE 5.8) with a demo FMOD Studio project, banks and events to play with, and adds the packaging settings for FMOD's banks. A project that already has its own FMOD Studio project keeps its sounds: only the plugins are replaced. View Readme opens its guide.
