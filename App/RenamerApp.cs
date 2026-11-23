@@ -29,7 +29,7 @@ namespace UnrealProjectRenamer
     static class Program
     {
         // App version: bump this for every build you hand out (major.minor.patch).
-        public const string Version = "0.24.0";
+        public const string Version = "0.24.1";
 
         [DllImport("user32.dll")]
         static extern bool SetProcessDPIAware();
@@ -1165,6 +1165,8 @@ namespace UnrealProjectRenamer
         // Extra warning per plugin for the Import confirmation, in the same order as PluginNames (null = none).
         static readonly string[] PluginWarnings = { null, null, null, ShaderWarmupWarning };
         readonly Label pluginNote = new Label { AutoSize = true, ForeColor = Theme.Muted, MaximumSize = new Size(620, 0) };
+        // Each note's own widest size (its MaximumSize as declared); the window's width can only make it narrower.
+        readonly Dictionary<Label, int> NoteWidths = new Dictionary<Label, int>();
         // The Visual Studio row and the line under it: hidden for Import VFS assets (nothing to build).
         Label vsLabel;
         Control vsSeparator;
@@ -1391,6 +1393,25 @@ namespace UnrealProjectRenamer
             grid.RowCount++;
 
             Controls.Add(grid);
+
+            // The notes under the fields wrap to the space the window really has (their fixed MaximumSize alone is
+            // wider than a narrow window, which cut the text off at the right edge). Kept up to date on every resize.
+            var notes = new[] { projectNote, actionNote, nameNote, rebuildNote, assetNote, pluginNote, buildConfigNote,
+                                buildConfigWarning, cookContentNote, vsNote };
+            Action fitNotes = () =>
+            {
+                var widths = grid.GetColumnWidths();
+                if (widths.Length < 3) return;
+                int room = widths[1] + widths[2];
+                foreach (var n in notes)
+                {
+                    int w = Math.Max(200, Math.Min(NoteWidths[n], room - n.Margin.Horizontal - 4));
+                    if (n.MaximumSize.Width != w) n.MaximumSize = new Size(w, 0);
+                }
+            };
+            foreach (var n in notes) NoteWidths[n] = n.MaximumSize.Width > 0 ? n.MaximumSize.Width : int.MaxValue;
+            grid.SizeChanged += (s, e) => fitNotes();
+            Shown += (s, e) => fitNotes();
 
             projectBrowse.Click += (s, e) => BrowseProject();
             buildLocationBrowse.Click += (s, e) =>

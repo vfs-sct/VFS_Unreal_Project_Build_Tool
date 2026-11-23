@@ -4,6 +4,10 @@
 
 ---
 
+### 0.24.1
+
+- The grey notes under the fields (e.g. the plugin descriptions) wrap to the window's width instead of being cut off at the right edge in a narrow window.
+
 ### 0.24.0
 
 - Import Plugin works for **Async Loading Screen** (Truong Bui's free loading screen plugin, for UE 5.8): it downloads the plugin from the author's GitHub, and View Readme opens the author's guide. The yellow list says where to set it up.
