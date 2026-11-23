@@ -1,4 +1,4 @@
-# VFS Unreal Project Build Tool v0.23.1
+# VFS Unreal Project Build Tool v0.24.0
 
 ### Contents
 
@@ -29,7 +29,7 @@
   - **Package Build**: cooks and packages a Windows build.
   - **Upgrade Project Version**: moves the project to a newer installed engine.
   - **Rename Project**: renames the project without breaking Blueprints, levels or saved values.
-  - **Import Plugin**: downloads a VFS plugin (FMOD, Gameplay Message Subsystem or Shader Warmup) into the project and builds it.
+  - **Import Plugin**: downloads a plugin (Async Loading Screen, FMOD, Gameplay Message Subsystem or Shader Warmup) into the project and builds it.
 - **Updates itself.** On opening, it checks GitHub for a newer version. If there is one, a small window shows the download progress, then the new version opens.
   - Works offline: with no connection it opens the version you have.
 
@@ -185,13 +185,14 @@ Use when Visual Studio or IntelliSense is confused.
 #### Import Plugin
 
 1. The project must be a **C++ project** (if it's Blueprint-only, add a C++ class once: *Tools > New C++ Class*).
-2. **Plugin:** pick the plugin: **FMOD**, **Gameplay Message Subsystem** or **Shader Warmup**. **View Readme** opens the plugin's own guide on GitHub.
+2. **Plugin:** pick the plugin: **Async Loading Screen**, **FMOD**, **Gameplay Message Subsystem** or **Shader Warmup**. **View Readme** opens the plugin's own guide on GitHub.
 3. **On Finish Success:** **Build Solution** (default) or **Do nothing**.
 4. **Then** (with Build Solution): **Open in Unreal Editor when done** (default) or **Do nothing**.
 5. Click **Import** and confirm. It:
    - Downloads the plugin from GitHub into the project's `Plugins` folder (creates `Plugins` if there isn't one).
    - Replaces an older copy of the plugin, if the project has one.
    - With Build Solution: regenerates the project files and builds.
+   - **Async Loading Screen:** Truong Bui's free loading screen plugin, downloaded from the author's GitHub (its 5.8.0 version). Set it up afterwards in *Project Settings > Game > Async Loading Screen*; the yellow list says how.
    - **FMOD:** installs the FMODStudio, FMODStudioNiagara and FMODStudioOpenXR plugins, plus a demo FMOD Studio project (`FMOD/`) and its banks and events (`Content/FMOD`) to play with, and adds the packaging settings that put the banks in a packaged game. If your project already has its own FMOD Studio project or `Content/FMOD`, only the plugins are replaced and your sounds are kept.
    - **Shader Warmup:** changes the project's **Game Default Map** to the warm-up screen (L_ShaderWarmup) and makes your old Game Default Map its **Next Level**, so the game shows the warm-up screen, then your first level. If the project has no Game Default Map of its own, nothing is changed and the yellow list says what to set.
 6. Check the yellow list (for Shader Warmup: launch in Standalone and see the warm-up screen, then your level).

@@ -1801,6 +1801,21 @@ def fetch_lfs(folders: list[Path], batch_url: str) -> int:
 # "lfs" (the repo's Git LFS batch URL, to swap LFS pointer files for the real ones); "setup" (runs after the copy,
 # with the project folder); "checks" (added to the yellow list).
 PLUGIN_SOURCES = {
+    # Truong Bui's Async Loading Screen (MIT), straight from the author's 5.8.0 branch (the user's choice, 23 Nov:
+    # no VFS copy, so the author's changes to that branch reach teammates).
+    "AsyncLoadingScreen": {
+        "title": "Async Loading Screen",
+        "zip": "https://codeload.github.com/truong-bui/AsyncLoadingScreen/zip/refs/heads/5.8.0",
+        "repo": "https://github.com/truong-bui/AsyncLoadingScreen",
+        "checks": [("Project Settings > Game > Async Loading Screen",
+                    "Set up the loading screen there (layout, background images, tips), then open a level from "
+                    "another one in Standalone or a packaged game to see it. It doesn't show in Play In Editor. "
+                    "Background images aren't included: use your own, with Texture Group UI and Compression "
+                    "UserInterface2D."),
+                   ("Project Settings > Packaging",
+                    "Only if you use startup movies: add Content/Movies to Additional Non-Asset Directories To "
+                    "Copy, or the movies won't play in a packaged game.")],
+    },
     # The FMOD for Unreal integration (2.03.14, made for UE 5.8) plus a demo FMOD Studio project and its banks.
     "FMODStudio": {
         "title": "FMOD",

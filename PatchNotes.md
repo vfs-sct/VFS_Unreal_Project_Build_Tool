@@ -4,6 +4,10 @@
 
 ---
 
+### 0.24.0
+
+- Import Plugin works for **Async Loading Screen** (Truong Bui's free loading screen plugin, for UE 5.8): it downloads the plugin from the author's GitHub, and View Readme opens the author's guide. The yellow list says where to set it up.
+
 ### 0.23.1
 
 - Import Plugin: the Gameplay Message Subsystem and Shader Warmup descriptions now say they're for UE 5.8, like FMOD's.

@@ -29,7 +29,7 @@ namespace UnrealProjectRenamer
     static class Program
     {
         // App version: bump this for every build you hand out (major.minor.patch).
-        public const string Version = "0.23.1";
+        public const string Version = "0.24.0";
 
         [DllImport("user32.dll")]
         static extern bool SetProcessDPIAware();
@@ -1132,13 +1132,14 @@ namespace UnrealProjectRenamer
         };
         readonly Label assetNote = new Label { AutoSize = true, ForeColor = Theme.Muted, MaximumSize = new Size(620, 0) };
         // Plugin field (Import Plugin only): which plugin to import.
-        static readonly string[] PluginNames = { "FMOD", "Gameplay Message Subsystem", "Shader Warmup" };
+        static readonly string[] PluginNames = { "Async Loading Screen", "FMOD", "Gameplay Message Subsystem", "Shader Warmup" };
         // The script's --plugin name for each (its PLUGIN_SOURCES), in the same order; null = can't be imported yet.
         // Gameplay Message Subsystem's .uplugin is GameplayMessageRouter (Epic's name, kept on purpose).
-        static readonly string[] PluginKeys = { "FMODStudio", "GameplayMessageRouter", "ShaderWarmup" };
+        static readonly string[] PluginKeys = { "AsyncLoadingScreen", "FMODStudio", "GameplayMessageRouter", "ShaderWarmup" };
         // Each plugin's README on GitHub (the Readme button), in the same order; null = none yet (button greyed out).
         static readonly string[] PluginReadmes =
         {
+            "https://github.com/truong-bui/AsyncLoadingScreen/blob/5.8.0/README.md",
             "https://github.com/vfs-sct/Unreal_Plugin_FMOD/blob/main/README.md",
             "https://github.com/vfs-sct/Unreal_Plugin_GameplayMessageSubsystem/blob/main/README.md",
             "https://github.com/vfs-sct/Unreal_Plugin_ShaderWarmup/blob/main/README.md",
@@ -1149,6 +1150,8 @@ namespace UnrealProjectRenamer
         // Shown in grey under the Plugin dropdown, in the same order as PluginNames ("" = no note yet).
         static readonly string[] PluginDescriptions =
         {
+            "A free loading screen plugin by Truong Bui (for UE 5.8) that shows a loading screen automatically whenever " +
+                "a level opens. Set it up in Project Settings: layouts, background images, tips and a loading icon.",
             "The FMOD for Unreal plugins (FMOD Studio 2.03.14, for UE 5.8) with a demo FMOD Studio project, banks and events to play with. " +
                 "If your project already has its own FMOD Studio project, only the plugins are replaced and your sounds are kept.",
             "A decoupled, publish-subscribe communication system plugin (for UE 5.8) from the Lyra project taught in Steven's classes.",
@@ -1160,7 +1163,7 @@ namespace UnrealProjectRenamer
             "Warning: importing it changes your project's Game Default Map to the warm-up screen (L_ShaderWarmup). " +
             "Your current Game Default Map becomes the level it opens when the shaders are ready.";
         // Extra warning per plugin for the Import confirmation, in the same order as PluginNames (null = none).
-        static readonly string[] PluginWarnings = { null, null, ShaderWarmupWarning };
+        static readonly string[] PluginWarnings = { null, null, null, ShaderWarmupWarning };
         readonly Label pluginNote = new Label { AutoSize = true, ForeColor = Theme.Muted, MaximumSize = new Size(620, 0) };
         // The Visual Studio row and the line under it: hidden for Import VFS assets (nothing to build).
         Label vsLabel;
@@ -1263,7 +1266,7 @@ namespace UnrealProjectRenamer
             AddRow(grid, "", actionNote, null);
             pluginBox.Items.AddRange(PluginNames);
             pluginBox.SelectedIndexChanged += (s, e) => { ShowPluginNote(); UpdateState(); };
-            pluginBox.SelectedIndex = 1; // Gameplay Message Subsystem
+            pluginBox.SelectedIndex = 2; // Gameplay Message Subsystem
             pluginBox.Width = 260;
             pluginBox.Margin = new Padding(3);
             // The dropdown with View Readme right next to it.
@@ -1600,7 +1603,7 @@ namespace UnrealProjectRenamer
             cleanCookByConfig = new Dictionary<string, bool>(CleanCookDefaults);
             buildConfigBox.SelectedIndex = 0; // Development
             assetBox.SelectedIndex = 0; // VFS Shaders
-            pluginBox.SelectedIndex = 1; // Gameplay Message Subsystem
+            pluginBox.SelectedIndex = 2; // Gameplay Message Subsystem
             ShowCleanCook();
             if (DefaultBuildLocation() != null) { autoBuildLocation = DefaultBuildLocation(); buildLocationBox.Text = autoBuildLocation; }
             PickActionEngine();

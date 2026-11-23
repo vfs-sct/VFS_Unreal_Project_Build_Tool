@@ -187,6 +187,9 @@ The user asked for these specifically — keep them:
   opened with the shell in `OpenPluginReadme`; shown/enabled in `ShowPluginNote`; gold, `Theme.StyleGoldButton`;
   **always clickable, also during a run** (user's rule): never add it to `SetInputsLocked`). To add a plugin: an entry in
   `PLUGIN_SOURCES`, its key in `PluginKeys` and its README in `PluginReadmes`.
+  **Async Loading Screen** (23 Nov, key `AsyncLoadingScreen`): Truong Bui's MIT plugin, downloaded straight from
+  `truong-bui/AsyncLoadingScreen`'s **5.8.0 branch** (user's choice: no VFS copy; View Readme = the author's README on
+  that branch). No LFS, no setup; two yellow-list checks (where to set it up; Content/Movies staging if movies are used).
   **FMOD** (23 Nov, key `FMODStudio`, repo `vfs-sct/Unreal_Plugin_FMOD`, a full UE 5.8 project): `plugins` installs
   FMODStudio + FMODStudioNiagara + FMODStudioOpenXR (each replaced as above); `project_files` copies the repo's `FMOD/`
   (Studio project) and `Content/FMOD` (banks + assets) **only if the project has no FMOD of its own**
